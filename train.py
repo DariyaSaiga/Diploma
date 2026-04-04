@@ -1,8 +1,10 @@
 import argparse
 
+import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
 
 from dataset import MoseiDataset
@@ -137,23 +139,35 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--data_path", type=str, default="mosei_cleaned.pkl")
-    parser.add_argument("--max_len", type=int, default=50)
+    parser.add_argument("--max_len", type=int, default=128)
     args = parser.parse_args()
 
     set_seed(42)
 
     # Датасеты
     train_dataset = MoseiDataset(path=args.data_path, split="train", max_len=args.max_len)
-    val_dataset = MoseiDataset(path=args.data_path, split="val", max_len=args.max_len)
+    val_dataset   = MoseiDataset(path=args.data_path, split="val",   max_len=args.max_len)
+    test_dataset  = MoseiDataset(path=args.data_path, split="test",  max_len=args.max_len)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=2)
+    val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, num_workers=2)
+    test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, num_workers=2)
+
+    # Веса классов — компенсируем дисбаланс (happy ×25 > fear)
+    train_labels = np.array([s["label"] for s in train_dataset.samples])
+    class_weights = compute_class_weight(
+        class_weight="balanced",
+        classes=np.arange(6),
+        y=train_labels,
+    )
+    class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
+    print(f"Class weights: {class_weights.cpu().numpy().round(3)}")
 
     # Модель
     model = build_model(args.model).to(device)
 
-    # Loss и optimizer
-    criterion = nn.CrossEntropyLoss()
+    # Loss с весами + optimizer
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     best_val_f1 = 0.0
@@ -181,6 +195,16 @@ def main() -> None:
             print(f"  ✅ Сохранена лучшая модель → {save_path}")
 
     print(f"\n🔥 Обучение завершено! Лучший val F1: {best_val_f1:.4f}")
+
+    # ── Финальная оценка на test set ──────────────────────────────────────────
+    print("\nЗагружаем лучшую модель для оценки на test set...")
+    model.load_state_dict(torch.load(save_path, map_location=device))
+    test_loss, test_acc, test_f1 = evaluate(model, test_loader, criterion, args.model)
+    print("=" * 55)
+    print(
+        f"TEST | loss={test_loss:.4f}  acc={test_acc:.4f}  f1={test_f1:.4f}"
+    )
+    print("=" * 55)
 
 
 if __name__ == "__main__":

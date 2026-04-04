@@ -17,7 +17,7 @@ class MoseiDataset(Dataset):
         self,
         path: str = "mosei_cleaned.pkl",
         split: str = "train",
-        max_len: int = 50,
+        max_len: int = 128,
     ):
         assert split in ("train", "val", "test"), (
             f"split должен быть 'train', 'val' или 'test', получили: '{split}'"
@@ -26,7 +26,7 @@ class MoseiDataset(Dataset):
         self.max_len = max_len
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-        # Грузим только нужный сплит — экономим RAM
+        # Загружаем весь pkl в память, затем выбираем нужный split
         with open(path, "rb") as f:
             data = pickle.load(f)
 

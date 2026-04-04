@@ -1,140 +1,186 @@
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-from dataset import MoseiDataset
-from utils import set_seed, device
-from sklearn.metrics import accuracy_score, f1_score
 import argparse
 
+import torch
+import torch.nn as nn
+from sklearn.metrics import accuracy_score, f1_score
+from torch.utils.data import DataLoader
 
-def train_one_epoch(model, loader, optimizer, criterion):
+from dataset import MoseiDataset
+from utils import device, set_seed
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Forward pass — единое место для всех моделей
+# ──────────────────────────────────────────────────────────────────────────────
+
+def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
+    """
+    Прогоняет один батч через нужную модель и возвращает logits.
+
+    Добавляешь новую модель — просто добавь elif ниже.
+    Менять train_one_epoch / evaluate не нужно.
+    """
+    if model_type == "text":
+        text = batch["text"]
+        return model(
+            input_ids=text["input_ids"].to(device),
+            attention_mask=text["attention_mask"].to(device),
+        )
+
+    if model_type == "av":
+        return model(
+            audio=batch["audio"].to(device),
+            visual=batch["visual"].to(device),
+        )
+
+    if model_type == "bottleneck":
+        text = batch["text"]
+        return model(
+            audio=batch["audio"].to(device),
+            visual=batch["visual"].to(device),
+            input_ids=text["input_ids"].to(device),
+            attention_mask=text["attention_mask"].to(device),
+        )
+
+    raise ValueError(f"Неизвестный model_type: '{model_type}'")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Train / Evaluate
+# ──────────────────────────────────────────────────────────────────────────────
+
+def train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: nn.Module,
+    model_type: str,
+) -> tuple[float, float, float]:
     model.train()
-    total_loss = 0
-
-    all_preds = []
-    all_labels = []
+    total_loss = 0.0
+    all_preds, all_labels = [], []
 
     for batch in loader:
-        audio = batch["audio"].to(device)
-        visual = batch["visual"].to(device)
         labels = batch["label"].to(device)
-
-        # текст пока не используем (для AV baseline)
-        text = batch["text"]
-
-        outputs = model(audio=audio, visual=visual, text=text)
+        outputs = run_batch(model, batch, model_type)
 
         loss = criterion(outputs, labels)
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
-
-        preds = torch.argmax(outputs, dim=1)
-        all_preds.extend(preds.cpu().numpy())
+        all_preds.extend(torch.argmax(outputs, dim=1).cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
     acc = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average="macro")
-
+    f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
     return total_loss / len(loader), acc, f1
 
 
-def evaluate(model, loader, criterion):
+@torch.no_grad()
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    model_type: str,
+) -> tuple[float, float, float]:
     model.eval()
-    total_loss = 0
+    total_loss = 0.0
+    all_preds, all_labels = [], []
 
-    all_preds = []
-    all_labels = []
+    for batch in loader:
+        labels = batch["label"].to(device)
+        outputs = run_batch(model, batch, model_type)
 
-    with torch.no_grad():
-        for batch in loader:
-            audio = batch["audio"].to(device)
-            visual = batch["visual"].to(device)
-            labels = batch["label"].to(device)
-            text = batch["text"]
-
-            outputs = model(audio=audio, visual=visual, text=text)
-
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
-
-            preds = torch.argmax(outputs, dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+        total_loss += criterion(outputs, labels).item()
+        all_preds.extend(torch.argmax(outputs, dim=1).cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
 
     acc = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average="macro")
-
+    f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
     return total_loss / len(loader), acc, f1
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="av")
+# ──────────────────────────────────────────────────────────────────────────────
+# Model factory — добавляешь модель здесь и больше нигде
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_model(model_type: str) -> nn.Module:
+    if model_type == "text":
+        from text_only_bert import TextOnlyBert
+        return TextOnlyBert()
+
+    if model_type == "av":
+        from audio_visual_baseline import AVModel
+        return AVModel()
+
+    if model_type == "bottleneck":
+        from bottleneck_fusion import BottleneckModel
+        return BottleneckModel()
+
+    raise ValueError(f"Неизвестный тип модели: '{model_type}'")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train CMU-MOSEI models")
+    parser.add_argument(
+        "--model", type=str, default="text",
+        choices=["text", "av", "bottleneck"],
+        help="Какую модель обучать",
+    )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
-
+    parser.add_argument("--data_path", type=str, default="mosei_cleaned.pkl")
+    parser.add_argument("--max_len", type=int, default=50)
     args = parser.parse_args()
 
     set_seed(42)
 
-    # 📦 Датасеты
-    train_dataset = MoseiDataset(split="train")
-    val_dataset = MoseiDataset(split="val")
+    # Датасеты
+    train_dataset = MoseiDataset(path=args.data_path, split="train", max_len=args.max_len)
+    val_dataset = MoseiDataset(path=args.data_path, split="val", max_len=args.max_len)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=2)
 
-    # 🧠 Выбор модели
-    if args.model == "av":
-        from audio_visual_baseline import AVModel
-        model = AVModel()
-    elif args.model == "text":
-        from text_only_bert import TextModel
-        model = TextModel()
-    elif args.model == "bottleneck":
-        from bottleneck_fusion import BottleneckModel
-        model = BottleneckModel()
-    else:
-        raise ValueError("Unknown model type")
+    # Модель
+    model = build_model(args.model).to(device)
 
-    model.to(device)
-
-    # ⚖️ Loss и optimizer
+    # Loss и optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    best_val_f1 = 0
+    best_val_f1 = 0.0
+    print(f"\nМодель: {args.model} | Device: {device}")
+    print("=" * 55)
 
-    print(f"\nTraining model: {args.model}")
-    print("=" * 50)
-
-    for epoch in range(args.epochs):
+    for epoch in range(1, args.epochs + 1):
         train_loss, train_acc, train_f1 = train_one_epoch(
-            model, train_loader, optimizer, criterion
+            model, train_loader, optimizer, criterion, args.model
         )
-
         val_loss, val_acc, val_f1 = evaluate(
-            model, val_loader, criterion
+            model, val_loader, criterion, args.model
         )
 
-        print(f"""
-Epoch {epoch+1}/{args.epochs}
-Train Loss: {train_loss:.4f} | Acc: {train_acc:.4f} | F1: {train_f1:.4f}
-Val   Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | F1: {val_f1:.4f}
-        """)
+        print(
+            f"Epoch {epoch:02d}/{args.epochs} | "
+            f"Train  loss={train_loss:.4f}  acc={train_acc:.4f}  f1={train_f1:.4f} | "
+            f"Val    loss={val_loss:.4f}  acc={val_acc:.4f}  f1={val_f1:.4f}"
+        )
 
-        # 💾 сохраняем лучшую модель
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
-            torch.save(model.state_dict(), f"best_{args.model}.pt")
-            print("✅ Saved best model!")
+            save_path = f"best_{args.model}.pt"
+            torch.save(model.state_dict(), save_path)
+            print(f"  ✅ Сохранена лучшая модель → {save_path}")
 
-    print("\n🔥 Training finished!")
+    print(f"\n🔥 Обучение завершено! Лучший val F1: {best_val_f1:.4f}")
 
 
 if __name__ == "__main__":

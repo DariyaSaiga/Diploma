@@ -17,7 +17,7 @@ class MoseiDataset(Dataset):
         self,
         path: str = "mosei_cleaned.pkl",
         split: str = "train",
-        max_len: int = 239041479,
+        max_len: int = 128,
     ):
         assert split in ("train", "val", "test"), (
             f"split должен быть 'train', 'val' или 'test', получили: '{split}'"

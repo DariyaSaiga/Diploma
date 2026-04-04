@@ -4,7 +4,9 @@ import pickle
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
-FILE_PATH = "/Users/dariyaablanova/Desktop/unic_work/Diploma/mosei.hdf5"
+FILE_PATH = "/Users/Лейла/Desktop/Diploma/mosei.hdf5"
+# "/Users/dariyaablanova/Desktop/unic_work/Diploma/mosei.hdf5"
+
 
 
 SAVE_PATH = "mosei_cleaned.pkl"

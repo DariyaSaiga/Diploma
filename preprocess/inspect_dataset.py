@@ -1,8 +1,8 @@
 import h5py
 import numpy as np
 
-FILE_PATH = "/Users/dariyaablanova/Desktop/unic_work/Diploma/mosei.hdf5"
-
+FILE_PATH = "/Users/Лейла/DesktopDiploma/mosei.hdf5"
+# "/Users/dariyaablanova/Desktop/unic_work/Diploma/mosei.hdf5"
 
 print("=" * 60)
 print("ШАГ 1 — Верхнеуровневые группы (модальности)")

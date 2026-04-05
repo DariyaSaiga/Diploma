@@ -10,13 +10,19 @@ import os
 import re
 
 EXPERIMENTS = [
-    ("exp_01_base_bottleneck",  "n=8,  lr=1e-3, frozen",          "baseline"),
-    ("exp_02_tokens16",         "n=16, lr=1e-3, frozen",          "more tokens"),
-    ("exp_03_lr5e4",            "n=8,  lr=5e-4, frozen",          "lower lr"),
-    ("exp_04_tokens16_lr5e4",   "n=16, lr=5e-4, frozen",          "best combined"),
-    ("exp_05_partial_unfreeze", "n=16, lr=5e-4, partial unfreeze","partial BERT"),
-    ("exp_06A_no_visual",       "n=8,  lr=1e-3, no visual",       "ablation"),
-    ("exp_06B_no_audio",        "n=8,  lr=1e-3, no audio",        "ablation"),
+    # ── Базовые эксперименты ─────────────────────────────────────────────
+    ("exp_01_base_bottleneck",  "n=8,  lr=1e-3, layers=2, frozen",       "baseline"),
+    ("exp_02_tokens16",         "n=16, lr=1e-3, layers=2, frozen",       "more tokens"),
+    ("exp_03_lr5e4",            "n=8,  lr=5e-4, layers=2, frozen",       "lower lr"),
+    ("exp_04_tokens16_lr5e4",   "n=16, lr=5e-4, layers=2, frozen",       "best combined"),
+    ("exp_05_partial_unfreeze", "n=16, lr=5e-4, layers=2, partial BERT", "partial BERT"),
+    # ── Ablation модальностей ────────────────────────────────────────────
+    ("exp_06A_no_visual",       "n=8,  lr=1e-3, layers=2, no visual",    "ablation"),
+    ("exp_06B_no_audio",        "n=8,  lr=1e-3, layers=2, no audio",     "ablation"),
+    # ── Новые эксперименты (multi-layer MBT) ────────────────────────────
+    ("exp_08_multilayer_lr3e4", "n=16, lr=3e-4, layers=2, ep=20",        "MBT main"),
+    ("exp_09_early_stop_p3",    "n=16, lr=3e-4, layers=2, pat=3",        "early stop"),
+    ("exp_10_sampler",          "n=16, lr=3e-4, layers=2, sampler",      "WRS sampler"),
 ]
 
 BASE_DIR = os.path.join(os.path.dirname(__file__))
@@ -39,8 +45,8 @@ def parse_metrics(path: str) -> dict:
         m = re.search(r"Test macro F1\s+:\s+([\d.]+)", text)
         if m:
             result["test_f1"] = float(m.group(1))
-        # per-class recall из classification report
-        for emotion in ["anger", "disgust", "fear", "happy", "sad", "surprise"]:
+        # per-class F1 — порядок совпадает с EMOTION_NAMES в train.py
+        for emotion in ["happy", "sad", "anger", "surprise", "disgust", "fear"]:
             pattern = rf"{emotion}\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
             m = re.search(pattern, text)
             if m:
@@ -66,6 +72,7 @@ def main():
 
         if not m:
             rows.append((exp_id, config, note, None))
+            print(f"{exp_id:<28} {config:<35}  {'—':>7}  {'—':>8}  {'—':>8}  {'—':>3}  {note} (не запущен)")
             continue
 
         val_f1   = m.get("val_f1",    0.0)

@@ -13,7 +13,7 @@ from sklearn.metrics import (
     f1_score,
 )
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from bottleneck_fusion import BottleneckFusion
 
 from dataset import MoseiDataset
@@ -225,6 +225,7 @@ def save_config(args, exp_dir: str) -> None:
         f"freeze_bert          = {args.freeze_bert}",
         f"no_audio             = {args.no_audio}",
         f"no_visual            = {args.no_visual}",
+        f"use_sampler          = {args.use_sampler}",
         f"max_text_len         = {args.max_len}",
         f"max_audio_len        = 100",
         f"max_visual_len       = 100",
@@ -299,8 +300,10 @@ def main() -> None:
     parser.add_argument("--freeze_bert", type=str, default="full",
                         choices=["full", "partial", "none"])
     parser.add_argument("--lr_bert", type=float, default=None)
-    parser.add_argument("--no_audio",  action="store_true")
-    parser.add_argument("--no_visual", action="store_true")
+    parser.add_argument("--no_audio",    action="store_true")
+    parser.add_argument("--no_visual",   action="store_true")
+    parser.add_argument("--use_sampler", action="store_true",
+                        help="WeightedRandomSampler для балансировки батчей по классам")
 
     # ── Новые параметры обучения ──────────────────────────────────────────
     parser.add_argument("--label_smoothing", type=float, default=0.1,     # ← новый
@@ -326,12 +329,7 @@ def main() -> None:
     val_dataset   = MoseiDataset(data=data, split="val",   max_text_len=args.max_len)
     test_dataset  = MoseiDataset(data=data, split="test",  max_text_len=args.max_len)
 
-    cfn = partial(collate_fn, max_audio_len=100, max_visual_len=100)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,  num_workers=2, collate_fn=cfn)
-    val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
-    test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
-
-    # ── Веса классов ──────────────────────────────────────────────────────
+    # ── Веса классов (только train) ───────────────────────────────────────
     train_labels = np.array([s["label"] for s in train_dataset.samples])
     class_weights = compute_class_weight(
         class_weight="balanced",
@@ -340,6 +338,22 @@ def main() -> None:
     )
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
     print(f"Class weights: {class_weights.cpu().numpy().round(3)}")
+
+    cfn = partial(collate_fn, max_audio_len=100, max_visual_len=100)
+
+    # ── WeightedRandomSampler (exp_10) ────────────────────────────────────
+    if args.use_sampler:
+        sample_weights = class_weights[train_labels].cpu()
+        sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=sampler,
+                                  num_workers=2, collate_fn=cfn)
+        print("  ⚖️  WeightedRandomSampler включён")
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
+                                  num_workers=2, collate_fn=cfn)
+
+    val_loader  = DataLoader(val_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
 
     # ── Модель ────────────────────────────────────────────────────────────
     model = build_model(args).to(device)

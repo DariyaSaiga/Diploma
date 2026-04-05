@@ -89,7 +89,7 @@ class BottleneckFusion(nn.Module):
         num_bottleneck_tokens: int = 16,
         num_bottleneck_layers: int = 2,
         num_heads: int = 4,
-        dropout: float = 0.4,
+        dropout: float = 0.3,
         freeze_bert: bool = True,
         use_audio: bool = True,
         use_visual: bool = True,

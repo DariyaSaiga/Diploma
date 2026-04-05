@@ -288,7 +288,7 @@ def main() -> None:
     parser.add_argument("--model",      type=str, default="text",
                         choices=["text", "av", "bottleneck"])
     parser.add_argument("--epochs",     type=int,   default=10)
-    parser.add_argument("--batch_size", type=int,   default=32)
+    parser.add_argument("--batch_size", type=int,   default=16)
     parser.add_argument("--lr",         type=float, default=1e-3)
     parser.add_argument("--data_path",  type=str,   default="mosei_cleaned.pkl")
     parser.add_argument("--max_len",    type=int,   default=128)

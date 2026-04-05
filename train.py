@@ -215,7 +215,7 @@ def save_config(args, exp_dir: str) -> None:
     lines = [
         f"model                = {args.model}",
         f"num_classes          = 6",
-        f"hidden_dim           = 128",
+        f"hidden_dim           = 256",
         f"num_bottleneck_tokens= {args.num_bottleneck_tokens}",
         f"num_bottleneck_layers= {args.num_bottleneck_layers}",
         f"batch_size           = {args.batch_size}",

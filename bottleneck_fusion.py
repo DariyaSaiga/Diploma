@@ -85,7 +85,7 @@ class BottleneckFusion(nn.Module):
     def __init__(
         self,
         num_classes: int = 6,
-        hidden_dim: int = 128,
+        hidden_dim: int = 256,
         num_bottleneck_tokens: int = 16,
         num_bottleneck_layers: int = 2,
         num_heads: int = 4,

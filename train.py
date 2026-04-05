@@ -106,32 +106,65 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     model_type: str,
-    clip_grad: float = 1.0,          # ← gradient clipping
-) -> tuple[float, float, float]:
+    clip_grad: float = 1.0,
+    dra_criterion=None,      # DRALoss instance или None
+) -> tuple:
+    """
+    Возвращает (loss, acc, f1).
+    Если dra_criterion задан — использует model.forward_dra() и DRA loss.
+    Дополнительно возвращает epoch_losses_per_branch для dra.update_history().
+    """
     model.train()
     total_loss = 0.0
     all_preds, all_labels = [], []
 
-    for batch in loader:
-        labels  = batch["label"].to(device)
-        outputs = run_batch(model, batch, model_type)
+    # Для DRA: накапливаем средние лоссы по веткам за эпоху
+    dra_branch_totals = [0.0, 0.0, 0.0, 0.0]   # [text, audio, visual, fused]
 
-        loss = criterion(outputs, labels)
+    for batch in loader:
+        labels = batch["label"].to(device)
+
+        if dra_criterion is not None and model_type == "bottleneck":
+            # ── DRA forward: 4 набора логитов ─────────────────────────────
+            logits_f, logits_t, logits_a, logits_v = model.forward_dra(
+                input_ids=batch["input_ids"].to(device),
+                attention_mask=batch["attention_mask"].to(device),
+                audio=batch["audio"].to(device),
+                audio_mask=batch["audio_mask"].to(device),
+                visual=batch["visual"].to(device),
+                visual_mask=batch["visual_mask"].to(device),
+            )
+            L_t = criterion(logits_t, labels)
+            L_a = criterion(logits_a, labels)
+            L_v = criterion(logits_v, labels)
+            L_f = criterion(logits_f, labels)
+
+            loss = dra_criterion([L_t, L_a, L_v, L_f])
+            outputs = logits_f   # для предсказаний используем fused
+
+            dra_branch_totals[0] += L_t.item()
+            dra_branch_totals[1] += L_a.item()
+            dra_branch_totals[2] += L_v.item()
+            dra_branch_totals[3] += L_f.item()
+        else:
+            # ── Стандартный forward ────────────────────────────────────────
+            outputs = run_batch(model, batch, model_type)
+            loss    = criterion(outputs, labels)
+
         optimizer.zero_grad()
         loss.backward()
-
-        # ── Gradient clipping (защита от взрывов в attention слоях) ──────
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
-
         optimizer.step()
 
         total_loss += loss.item()
         all_preds.extend(torch.argmax(outputs, dim=1).cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
+    n = len(loader)
     acc = accuracy_score(all_labels, all_preds)
     f1  = f1_score(all_labels, all_preds, average="macro", zero_division=0)
-    return total_loss / len(loader), acc, f1
+    epoch_branch_losses = [x / n for x in dra_branch_totals]
+    return total_loss / n, acc, f1, epoch_branch_losses
 
 
 @torch.no_grad()
@@ -304,11 +337,13 @@ def main() -> None:
     parser.add_argument("--no_visual",   action="store_true")
     parser.add_argument("--use_sampler", action="store_true",
                         help="WeightedRandomSampler для балансировки батчей по классам")
+    parser.add_argument("--use_dra",    action="store_true",
+                        help="DRA loss: раздельные aux лоссы для каждой модальности")
 
     # ── Новые параметры обучения ──────────────────────────────────────────
-    parser.add_argument("--label_smoothing", type=float, default=0.1,     # ← новый
+    parser.add_argument("--label_smoothing", type=float, default=0.1,
                         help="Label smoothing для CrossEntropyLoss (0.0 = выкл)")
-    parser.add_argument("--patience", type=int, default=5,                # ← новый
+    parser.add_argument("--patience", type=int, default=5,
                         help="Early stopping: стоп если val F1 не растёт N эпох")
 
     # ── Сохранение эксперимента ───────────────────────────────────────────
@@ -390,27 +425,45 @@ def main() -> None:
     # ── Loss с label smoothing ─────────────────────────────────────────────
     criterion = nn.CrossEntropyLoss(
         weight=class_weights,
-        label_smoothing=args.label_smoothing,   # ← было 0.0, теперь 0.1
+        label_smoothing=args.label_smoothing,
     )
+
+    # ── DRA loss (опционально) ─────────────────────────────────────────────
+    dra_criterion = None
+    if args.use_dra and args.model == "bottleneck":
+        from dra_loss import DRALoss
+        dra_criterion = DRALoss(num_tasks=4, temperature=2.0).to(device)
+        # Добавляем параметры DRA в optimizer
+        optimizer.add_param_group({"params": dra_criterion.parameters(), "lr": args.lr})
+        print("  🔀 DRA loss включён (text + audio + visual + fused)")
 
     # ── Путь для сохранения ───────────────────────────────────────────────
     save_path = os.path.join(args.exp_dir, "best_model.pt") if args.exp_dir else f"best_{args.model}.pt"
 
     # ── Цикл обучения ─────────────────────────────────────────────────────
-    best_val_f1    = 0.0
-    best_epoch     = 1
-    epochs_no_improve = 0           # ← счётчик для early stopping
+    best_val_f1       = 0.0
+    best_epoch        = 1
+    epochs_no_improve = 0
 
     print(f"\nМодель: {args.model} | Device: {device}")
     print(f"Bottleneck tokens: {args.num_bottleneck_tokens} | layers: {args.num_bottleneck_layers} | freeze_bert: {args.freeze_bert}")
-    print(f"label_smoothing: {args.label_smoothing} | early_stop patience: {args.patience}")
+    print(f"label_smoothing: {args.label_smoothing} | patience: {args.patience} | use_dra: {args.use_dra}")
     print(f"use_audio: {not args.no_audio} | use_visual: {not args.no_visual}")
     print("=" * 65)
 
     for epoch in range(1, args.epochs + 1):
-        train_loss, train_acc, train_f1 = train_one_epoch(
-            model, train_loader, optimizer, criterion, args.model
+        train_loss, train_acc, train_f1, branch_losses = train_one_epoch(
+            model, train_loader, optimizer, criterion, args.model,
+            dra_criterion=dra_criterion,
         )
+
+        # Обновляем DWA-историю после каждой эпохи
+        if dra_criterion is not None:
+            dra_criterion.update_history(branch_losses)
+            print(f"  DRA α: {torch.exp(dra_criterion.log_alpha).detach().cpu().numpy().round(3)}"
+                  f"  branch_losses(t/a/v/f): "
+                  f"{branch_losses[0]:.3f}/{branch_losses[1]:.3f}/{branch_losses[2]:.3f}/{branch_losses[3]:.3f}")
+
         val_loss, val_acc, val_f1 = evaluate(
             model, val_loader, criterion, args.model
         )
@@ -432,8 +485,6 @@ def main() -> None:
         else:
             epochs_no_improve += 1
             print(f"  ⏳ Нет улучшения {epochs_no_improve}/{args.patience}")
-
-            # ── Early stopping ────────────────────────────────────────────
             if epochs_no_improve >= args.patience:
                 print(f"\n🛑 Early stopping на epoch {epoch} (patience={args.patience})")
                 break

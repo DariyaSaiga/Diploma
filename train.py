@@ -114,8 +114,8 @@ def build_model(model_type: str) -> nn.Module:
         return TextOnlyBert()
 
     if model_type == "av":
-        from audio_visual_baseline import AVModel
-        return AVModel()
+        from audio_visual_baseline import AudioVisualBaseline
+        return AudioVisualBaseline()
 
     if model_type == "bottleneck":
         from bottleneck_fusion import BottleneckModel

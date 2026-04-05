@@ -13,29 +13,14 @@ class MoseiDataset(Dataset):
     Lazy loading — грузим только нужный сплит, не весь файл целиком.
     """
 
-    def __init__(
-        self,
-        path: str = "mosei_cleaned.pkl",
-        split: str = "train",
-        max_len: int = 128,
-    ):
-        assert split in ("train", "val", "test"), (
-            f"split должен быть 'train', 'val' или 'test', получили: '{split}'"
-        )
+    def __init__(self, data, split="train", max_len=50):
+        assert split in ("train", "val", "test")
 
         self.max_len = max_len
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-        # Загружаем весь pkl в память, затем выбираем нужный split
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-
-        if split not in data:
-            available = list(data.keys())
-            raise KeyError(
-                f"Сплит '{split}' не найден в файле. Доступные ключи: {available}"
-            )
-
+        self.samples = data[split]
+        print(f"[MoseiDataset] split='{split}' | samples={len(self.samples)}")
         self.samples = data[split]
         print(f"[MoseiDataset] split='{split}' | samples={len(self.samples)}")
 

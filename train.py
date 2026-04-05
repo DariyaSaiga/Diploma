@@ -145,9 +145,14 @@ def main() -> None:
     set_seed(42)
 
     # Датасеты
-    train_dataset = MoseiDataset(path=args.data_path, split="train", max_len=args.max_len)
-    val_dataset   = MoseiDataset(path=args.data_path, split="val",   max_len=args.max_len)
-    test_dataset  = MoseiDataset(path=args.data_path, split="test",  max_len=args.max_len)
+    import pickle
+
+    with open(args.data_path, "rb") as f:
+        data = pickle.load(f)
+
+    train_dataset = MoseiDataset(data=data, split="train", max_len=args.max_len)
+    val_dataset   = MoseiDataset(data=data, split="val",   max_len=args.max_len)
+    test_dataset  = MoseiDataset(data=data, split="test",  max_len=args.max_len)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
     val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, num_workers=2)

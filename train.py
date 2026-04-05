@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 
 import numpy as np
 import torch
@@ -9,6 +10,60 @@ from torch.utils.data import DataLoader
 
 from dataset import MoseiDataset
 from utils import device, set_seed
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Collate — динамический паддинг audio/visual внутри батча
+# ──────────────────────────────────────────────────────────────────────────────
+
+def collate_fn(batch: list[dict], max_audio_len: int = 100, max_visual_len: int = 100) -> dict:
+    """
+    Собирает батч с динамическим паддингом audio/visual.
+    Text уже пофиксирован токенизатором.
+
+    Возвращает плоский dict:
+        input_ids, attention_mask  — (B, Lt)
+        audio, audio_mask          — (B, Ta, 74) / (B, Ta)
+        visual, visual_mask        — (B, Tv, 713) / (B, Tv)
+        label                      — (B,)
+    """
+    input_ids      = torch.stack([s["input_ids"] for s in batch])       # (B, Lt)
+    attention_mask = torch.stack([s["attention_mask"] for s in batch])  # (B, Lt)
+    labels         = torch.stack([s["label"] for s in batch])           # (B,)
+
+    # ── Audio ────────────────────────────────────────────────────────────
+    audio_list = [s["audio"] for s in batch]  # list of (Ti, 74)
+    audio_lens = [min(a.shape[0], max_audio_len) for a in audio_list]
+    batch_audio_len = max(audio_lens)
+    D_a = audio_list[0].shape[1]
+
+    audio_padded = torch.zeros(len(batch), batch_audio_len, D_a)
+    audio_mask   = torch.zeros(len(batch), batch_audio_len, dtype=torch.long)
+    for i, (a, l) in enumerate(zip(audio_list, audio_lens)):
+        audio_padded[i, :l] = a[:l]
+        audio_mask[i, :l]   = 1
+
+    # ── Visual ───────────────────────────────────────────────────────────
+    visual_list = [s["visual"] for s in batch]  # list of (Ti, 713)
+    visual_lens = [min(v.shape[0], max_visual_len) for v in visual_list]
+    batch_visual_len = max(visual_lens)
+    D_v = visual_list[0].shape[1]
+
+    visual_padded = torch.zeros(len(batch), batch_visual_len, D_v)
+    visual_mask   = torch.zeros(len(batch), batch_visual_len, dtype=torch.long)
+    for i, (v, l) in enumerate(zip(visual_list, visual_lens)):
+        visual_padded[i, :l] = v[:l]
+        visual_mask[i, :l]   = 1
+
+    return {
+        "input_ids":      input_ids,
+        "attention_mask": attention_mask,
+        "audio":          audio_padded,
+        "audio_mask":     audio_mask,
+        "visual":         visual_padded,
+        "visual_mask":    visual_mask,
+        "label":          labels,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -23,10 +78,9 @@ def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
     Менять train_one_epoch / evaluate не нужно.
     """
     if model_type == "text":
-        text = batch["text"]
         return model(
-            input_ids=text["input_ids"].to(device),
-            attention_mask=text["attention_mask"].to(device),
+            input_ids=batch["input_ids"].to(device),
+            attention_mask=batch["attention_mask"].to(device),
         )
 
     if model_type == "av":
@@ -36,12 +90,13 @@ def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
         )
 
     if model_type == "bottleneck":
-        text = batch["text"]
         return model(
+            input_ids=batch["input_ids"].to(device),
+            attention_mask=batch["attention_mask"].to(device),
             audio=batch["audio"].to(device),
+            audio_mask=batch["audio_mask"].to(device),
             visual=batch["visual"].to(device),
-            input_ids=text["input_ids"].to(device),
-            attention_mask=text["attention_mask"].to(device),
+            visual_mask=batch["visual_mask"].to(device),
         )
 
     raise ValueError(f"Неизвестный model_type: '{model_type}'")
@@ -118,8 +173,8 @@ def build_model(model_type: str) -> nn.Module:
         return AudioVisualBaseline()
 
     if model_type == "bottleneck":
-        from bottleneck_fusion import BottleneckModel
-        return BottleneckModel()
+        from bottleneck_fusion import BottleneckFusion
+        return BottleneckFusion()
 
     raise ValueError(f"Неизвестный тип модели: '{model_type}'")
 
@@ -150,13 +205,14 @@ def main() -> None:
     with open(args.data_path, "rb") as f:
         data = pickle.load(f)
 
-    train_dataset = MoseiDataset(data=data, split="train", max_len=args.max_len)
-    val_dataset   = MoseiDataset(data=data, split="val",   max_len=args.max_len)
-    test_dataset  = MoseiDataset(data=data, split="test",  max_len=args.max_len)
+    train_dataset = MoseiDataset(data=data, split="train", max_text_len=args.max_len)
+    val_dataset   = MoseiDataset(data=data, split="val",   max_text_len=args.max_len)
+    test_dataset  = MoseiDataset(data=data, split="test",  max_text_len=args.max_len)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
-    val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, num_workers=2)
-    test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, num_workers=2)
+    cfn = partial(collate_fn, max_audio_len=100, max_visual_len=100)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,  num_workers=2, collate_fn=cfn)
+    val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
+    test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
 
     # Веса классов — компенсируем дисбаланс (happy ×25 > fear)
     train_labels = np.array([s["label"] for s in train_dataset.samples])

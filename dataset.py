@@ -4,39 +4,27 @@ from torch.utils.data import Dataset
 import numpy as np
 from transformers import BertTokenizer
 
+MAX_AUDIO_LEN = 100
+MAX_VISUAL_LEN = 100
+
 
 class MoseiDataset(Dataset):
     """
     CMU-MOSEI dataset wrapper.
 
     Поддерживает три сплита: "train", "val", "test".
-    Lazy loading — грузим только нужный сплит, не весь файл целиком.
+    Audio/visual возвращаются без паддинга (truncate до 100).
+    Паддинг и маски строятся в collate_fn.
     """
 
-    def __init__(self, data, split="train", max_len=50):
+    def __init__(self, data, split="train", max_text_len=128):
         assert split in ("train", "val", "test")
 
-        self.max_len = max_len
+        self.max_text_len = max_text_len
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
         self.samples = data[split]
         print(f"[MoseiDataset] split='{split}' | samples={len(self.samples)}")
-        self.samples = data[split]
-        print(f"[MoseiDataset] split='{split}' | samples={len(self.samples)}")
-
-    # ------------------------------------------------------------------
-    # Вспомогательные методы
-    # ------------------------------------------------------------------
-
-    def _pad_or_truncate(self, x: np.ndarray, max_len: int) -> np.ndarray:
-        """Приводит временную ось к фиксированной длине max_len."""
-        T = x.shape[0]
-        if T > max_len:
-            return x[:max_len]
-        if T < max_len:
-            pad = np.zeros((max_len - T, x.shape[1]), dtype=x.dtype)
-            return np.concatenate([x, pad], axis=0)
-        return x
 
     # ------------------------------------------------------------------
     # Dataset interface
@@ -49,24 +37,23 @@ class MoseiDataset(Dataset):
         sample = self.samples[idx]
 
         text: str = sample["text"]
-        audio = self._pad_or_truncate(np.array(sample["audio"]), self.max_len)
-        visual = self._pad_or_truncate(np.array(sample["visual"]), self.max_len)
+        # Truncate to max — padding делается в collate_fn динамически
+        audio = np.array(sample["audio"])[:MAX_AUDIO_LEN]   # (Ta, 74)
+        visual = np.array(sample["visual"])[:MAX_VISUAL_LEN]  # (Tv, 713)
         label: int = sample["label"]
 
         encoding = self.tokenizer(
             text,
             padding="max_length",
             truncation=True,
-            max_length=self.max_len,
+            max_length=self.max_text_len,
             return_tensors="pt",
         )
 
         return {
-            "text": {
-                "input_ids": encoding["input_ids"].squeeze(0),       # (L,)
-                "attention_mask": encoding["attention_mask"].squeeze(0),  # (L,)
-            },
-            "audio": torch.tensor(audio, dtype=torch.float32),       # (T, D_a)
-            "visual": torch.tensor(visual, dtype=torch.float32),      # (T, D_v)
+            "input_ids": encoding["input_ids"].squeeze(0),          # (Lt,)
+            "attention_mask": encoding["attention_mask"].squeeze(0), # (Lt,)
+            "audio": torch.tensor(audio, dtype=torch.float32),       # (Ta, 74)
+            "visual": torch.tensor(visual, dtype=torch.float32),     # (Tv, 713)
             "label": torch.tensor(label, dtype=torch.long),
         }

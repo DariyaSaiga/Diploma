@@ -21,7 +21,7 @@
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
-EXP_DIR="experiments/exp_10_sampler"
+EXP_DIR="/content/drive/MyDrive/Дипломка_правильная/exp_10_sampler"
 mkdir -p "$EXP_DIR"
 
 python train.py \

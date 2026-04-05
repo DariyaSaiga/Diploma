@@ -364,16 +364,23 @@ def main() -> None:
                         if "bert" in n and p.requires_grad]
         other_params = [p for n, p in model.named_parameters()
                         if "bert" not in n and p.requires_grad]
-        optimizer = torch.optim.Adam([
+        optimizer = torch.optim.AdamW([
             {"params": bert_params,  "lr": args.lr_bert},
             {"params": other_params, "lr": args.lr},
-        ])
+        ], weight_decay=1e-4)
         print(f"  ⚙️  Optimizer: BERT lr={args.lr_bert}, остальное lr={args.lr}")
     else:
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=args.lr,
+            weight_decay=1e-4,
         )
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=1e-6,
+    )
 
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -405,6 +412,8 @@ def main() -> None:
             f"Train  loss={train_loss:.4f}  acc={train_acc:.4f}  f1={train_f1:.4f} | "
             f"Val    loss={val_loss:.4f}  acc={val_acc:.4f}  f1={val_f1:.4f}"
         )
+
+        scheduler.step()
 
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1

@@ -26,7 +26,7 @@ mkdir -p "$EXP_DIR"
 
 python train.py \
   --model bottleneck \
-  --epochs 20 \
+  --epochs 30 \
   --batch_size 16 \
   --lr 3e-4 \
   --num_bottleneck_tokens 16 \

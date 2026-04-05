@@ -87,7 +87,7 @@ def main():
     print(f"\n🏆 Лучший по test macro F1: {best_exp}  (F1={best_f1:.4f})")
 
     # ── Per-class F1 по всем завершённым экспериментам ────────────────────
-    emotions = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
+    emotions = ["happy", "sad", "anger", "surprise", "disgust", "fear"]
     completed = [(e, c, n, m) for e, c, n, m in rows if m]
 
     if completed:

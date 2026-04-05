@@ -3,20 +3,77 @@ import torch.nn as nn
 from transformers import BertModel
 
 
+class BottleneckLayer(nn.Module):
+    """
+    Один слой MBT-fusion:
+      - Каждая модальность делает self-attention внутри себя
+      - Ботлнек-токены собирают информацию из каждой модальности (cross-attn)
+      - Ботлнек усредняется между модальностями
+      - FFN + residual + LN
+    """
+
+    def __init__(self, hidden_dim: int, num_heads: int, num_bn: int, dropout: float):
+        super().__init__()
+
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads,
+            dropout=dropout, batch_first=True
+        )
+        self.self_norm = nn.LayerNorm(hidden_dim)
+
+        self.cross_attn_text   = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
+        self.cross_attn_audio  = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
+        self.cross_attn_visual = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+        )
+
+        self.cross_norm = nn.LayerNorm(hidden_dim)
+        self.ffn_norm   = nn.LayerNorm(hidden_dim)
+        self.drop       = nn.Dropout(dropout)
+
+    def forward(self, text, audio, visual, bn, text_pad, audio_pad, visual_pad):
+        # 1) Unimodal self-attention
+        def self_att(x, pad):
+            out, _ = self.self_attn(x, x, x, key_padding_mask=pad)
+            return self.self_norm(x + self.drop(out))
+
+        text   = self_att(text,   text_pad)
+        audio  = self_att(audio,  audio_pad)
+        visual = self_att(visual, visual_pad)
+
+        # 2) Cross-attention: ботлнек → каждая модальность отдельно
+        bn_t, _ = self.cross_attn_text(bn,   text,   text,   key_padding_mask=text_pad)
+        bn_a, _ = self.cross_attn_audio(bn,  audio,  audio,  key_padding_mask=audio_pad)
+        bn_v, _ = self.cross_attn_visual(bn, visual, visual, key_padding_mask=visual_pad)
+
+        # 3) Усредняем обновлённые ботлнеки по модальностям (как в MBT)
+        bn_avg = (bn_t + bn_a + bn_v) / 3.0
+
+        # 4) Residual + LN + FFN
+        bn = self.cross_norm(bn + self.drop(bn_avg))
+        bn = self.ffn_norm(bn + self.drop(self.ffn(bn)))
+
+        return text, audio, visual, bn
+
+
 class BottleneckFusion(nn.Module):
     """
-    Sequence-level multimodal fusion через learnable bottleneck tokens.
+    Multi-layer Multimodal Bottleneck Transformer.
 
     Архитектура:
         1. Text branch:   BERT last_hidden_state → Linear(768→128) + LN + Dropout  → (B, Lt, 128)
         2. Audio branch:  Linear(74→128) + ReLU + LN + Dropout                     → (B, Ta, 128)
         3. Visual branch: Linear(713→128) + ReLU + LN + Dropout                    → (B, Tv, 128)
-        4. Concat активных модальностей                                             → (B, L_fused, 128)
-        5. Learnable bottleneck tokens attend к fused sequence (cross-attention)    → (B, n_bn, 128)
-        6. Mean pooling по bottleneck tokens → Linear(128→6)                       → (B, 6)
+        4. N слоёв BottleneckLayer (unimodal self-attn + cross-attn + FFN)
+        5. Mean pooling по bottleneck tokens → Linear(128→6)
 
     Masks:
-        attention_mask : (B, Lt) — 1=real, 0=pad  (из BERT tokenizer)
+        attention_mask : (B, Lt) — 1=real, 0=pad
         audio_mask     : (B, Ta) — 1=real, 0=pad
         visual_mask    : (B, Tv) — 1=real, 0=pad
 
@@ -29,7 +86,8 @@ class BottleneckFusion(nn.Module):
         self,
         num_classes: int = 6,
         hidden_dim: int = 128,
-        num_bottleneck_tokens: int = 8,
+        num_bottleneck_tokens: int = 16,
+        num_bottleneck_layers: int = 2,
         num_heads: int = 4,
         dropout: float = 0.3,
         freeze_bert: bool = True,
@@ -69,24 +127,19 @@ class BottleneckFusion(nn.Module):
             nn.Dropout(dropout),
         )
 
-        # ── Bottleneck tokens ────────────────────────────────────────────
+        # ── Learnable bottleneck tokens ───────────────────────────────────
         self.bottleneck_tokens = nn.Parameter(
-            torch.randn(1, num_bottleneck_tokens, hidden_dim)
+            torch.randn(1, num_bottleneck_tokens, hidden_dim) * 0.02
         )
 
-        # ── Cross-attention: bottleneck → fused sequence ─────────────────
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-            batch_first=True,
-        )
-        self.attn_norm = nn.LayerNorm(hidden_dim)
+        # ── Стек MBT-слоёв ────────────────────────────────────────────────
+        self.layers = nn.ModuleList([
+            BottleneckLayer(hidden_dim, num_heads, num_bottleneck_tokens, dropout)
+            for _ in range(num_bottleneck_layers)
+        ])
 
         # ── Classifier ───────────────────────────────────────────────────
         self.classifier = nn.Linear(hidden_dim, num_classes)
-
-    # ------------------------------------------------------------------
 
     def forward(
         self,
@@ -100,42 +153,29 @@ class BottleneckFusion(nn.Module):
 
         B = input_ids.size(0)
 
-        # ── Text: (B, Lt, 768) → (B, Lt, 128) ───────────────────────────
-        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        text_seq = self.text_proj(bert_out.last_hidden_state)  # (B, Lt, 128)
+        # ── Проекции ─────────────────────────────────────────────────────
+        bert_out   = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        text_seq   = self.text_proj(bert_out.last_hidden_state)  # (B, Lt, 128)
+        audio_seq  = self.audio_proj(audio)                       # (B, Ta, 128)
+        visual_seq = self.visual_proj(visual)                     # (B, Tv, 128)
 
-        # ── Собираем активные последовательности и маски ─────────────────
-        # Text всегда включён
-        seqs  = [text_seq]
-        masks = [(attention_mask == 0)]   # True = pad (для key_padding_mask)
+        # ── Padding masks (True = pad, для MHA) ──────────────────────────
+        text_pad   = (attention_mask == 0)  # (B, Lt)
+        audio_pad  = (audio_mask == 0)      # (B, Ta)
+        visual_pad = (visual_mask == 0)     # (B, Tv)
 
-        if self.use_audio:
-            audio_seq = self.audio_proj(audio)        # (B, Ta, 128)
-            seqs.append(audio_seq)
-            masks.append(audio_mask == 0)             # (B, Ta)
+        # ── Инициализируем ботлнек-токены ────────────────────────────────
+        bn = self.bottleneck_tokens.expand(B, -1, -1).clone()  # (B, n_bn, 128)
 
-        if self.use_visual:
-            visual_seq = self.visual_proj(visual)     # (B, Tv, 128)
-            seqs.append(visual_seq)
-            masks.append(visual_mask == 0)            # (B, Tv)
+        # ── Прогоняем через N слоёв BottleneckLayer ───────────────────────
+        for layer in self.layers:
+            text_seq, audio_seq, visual_seq, bn = layer(
+                text_seq, audio_seq, visual_seq, bn,
+                text_pad, audio_pad, visual_pad
+            )
 
-        fused_seq      = torch.cat(seqs,  dim=1)      # (B, L_fused, 128)
-        fused_pad_mask = torch.cat(masks, dim=1)      # (B, L_fused)  True=pad
+        # ── Mean pooling по ботлнек-токенам ──────────────────────────────
+        pooled = bn.mean(dim=1)          # (B, 128)
 
-        # ── Bottleneck cross-attention ─────────────────────────────────
-        bn_tokens = self.bottleneck_tokens.expand(B, -1, -1)  # (B, n_bn, 128)
-
-        attn_out, _ = self.cross_attn(
-            query=bn_tokens,
-            key=fused_seq,
-            value=fused_seq,
-            key_padding_mask=fused_pad_mask,
-        )  # (B, n_bn, 128)
-        attn_out = self.attn_norm(attn_out + bn_tokens)  # residual + LN
-
-        # ── Mean pooling по bottleneck tokens ─────────────────────────
-        pooled = attn_out.mean(dim=1)   # (B, 128)
-
-        # ── Classifier ─────────────────────────────────────────────────
-        logits = self.classifier(pooled)  # (B, 6)
-        return logits
+        # ── Classifier ───────────────────────────────────────────────────
+        return self.classifier(pooled)  # (B, 6)

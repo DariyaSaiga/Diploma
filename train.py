@@ -14,6 +14,7 @@ from sklearn.metrics import (
 )
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
+from bottleneck_fusion import BottleneckFusion
 
 from dataset import MoseiDataset
 from utils import device, set_seed
@@ -26,22 +27,12 @@ EMOTION_NAMES = ["happy", "sad", "anger", "surprise", "disgust", "fear"]
 # ──────────────────────────────────────────────────────────────────────────────
 
 def collate_fn(batch: list[dict], max_audio_len: int = 100, max_visual_len: int = 100) -> dict:
-    """
-    Собирает батч с динамическим паддингом audio/visual.
-    Text уже пофиксирован токенизатором.
-
-    Возвращает плоский dict:
-        input_ids, attention_mask  — (B, Lt)
-        audio, audio_mask          — (B, Ta, 74) / (B, Ta)
-        visual, visual_mask        — (B, Tv, 713) / (B, Tv)
-        label                      — (B,)
-    """
-    input_ids      = torch.stack([s["input_ids"] for s in batch])       # (B, Lt)
-    attention_mask = torch.stack([s["attention_mask"] for s in batch])  # (B, Lt)
-    labels         = torch.stack([s["label"] for s in batch])           # (B,)
+    input_ids      = torch.stack([s["input_ids"] for s in batch])
+    attention_mask = torch.stack([s["attention_mask"] for s in batch])
+    labels         = torch.stack([s["label"] for s in batch])
 
     # ── Audio ────────────────────────────────────────────────────────────
-    audio_list = [s["audio"] for s in batch]  # list of (Ti, 74)
+    audio_list = [s["audio"] for s in batch]
     audio_lens = [min(a.shape[0], max_audio_len) for a in audio_list]
     batch_audio_len = max(audio_lens)
     D_a = audio_list[0].shape[1]
@@ -53,7 +44,7 @@ def collate_fn(batch: list[dict], max_audio_len: int = 100, max_visual_len: int 
         audio_mask[i, :l]   = 1
 
     # ── Visual ───────────────────────────────────────────────────────────
-    visual_list = [s["visual"] for s in batch]  # list of (Ti, 713)
+    visual_list = [s["visual"] for s in batch]
     visual_lens = [min(v.shape[0], max_visual_len) for v in visual_list]
     batch_visual_len = max(visual_lens)
     D_v = visual_list[0].shape[1]
@@ -76,13 +67,10 @@ def collate_fn(batch: list[dict], max_audio_len: int = 100, max_visual_len: int 
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Forward pass — единое место для всех моделей
+# Forward pass
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
-    """
-    Прогоняет один батч через нужную модель и возвращает logits.
-    """
     if model_type == "text":
         return model(
             input_ids=batch["input_ids"].to(device),
@@ -118,18 +106,23 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     model_type: str,
+    clip_grad: float = 1.0,          # ← gradient clipping
 ) -> tuple[float, float, float]:
     model.train()
     total_loss = 0.0
     all_preds, all_labels = [], []
 
     for batch in loader:
-        labels = batch["label"].to(device)
+        labels  = batch["label"].to(device)
         outputs = run_batch(model, batch, model_type)
 
         loss = criterion(outputs, labels)
         optimizer.zero_grad()
         loss.backward()
+
+        # ── Gradient clipping (защита от взрывов в attention слоях) ──────
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+
         optimizer.step()
 
         total_loss += loss.item()
@@ -137,7 +130,7 @@ def train_one_epoch(
         all_labels.extend(labels.cpu().numpy())
 
     acc = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+    f1  = f1_score(all_labels, all_preds, average="macro", zero_division=0)
     return total_loss / len(loader), acc, f1
 
 
@@ -153,7 +146,7 @@ def evaluate(
     all_preds, all_labels = [], []
 
     for batch in loader:
-        labels = batch["label"].to(device)
+        labels  = batch["label"].to(device)
         outputs = run_batch(model, batch, model_type)
 
         total_loss += criterion(outputs, labels).item()
@@ -161,7 +154,7 @@ def evaluate(
         all_labels.extend(labels.cpu().numpy())
 
     acc = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+    f1  = f1_score(all_labels, all_preds, average="macro", zero_division=0)
     return total_loss / len(loader), acc, f1
 
 
@@ -172,13 +165,12 @@ def evaluate_full(
     criterion: nn.Module,
     model_type: str,
 ) -> tuple[float, list, list]:
-    """Как evaluate, но возвращает (loss, preds, labels) для confusion matrix."""
     model.eval()
     total_loss = 0.0
     all_preds, all_labels = [], []
 
     for batch in loader:
-        labels = batch["label"].to(device)
+        labels  = batch["label"].to(device)
         outputs = run_batch(model, batch, model_type)
 
         total_loss += criterion(outputs, labels).item()
@@ -205,7 +197,8 @@ def build_model(args) -> nn.Module:
         from bottleneck_fusion import BottleneckFusion
         return BottleneckFusion(
             num_bottleneck_tokens=args.num_bottleneck_tokens,
-            freeze_bert=(args.freeze_bert != "none"),   # full/partial → freeze at init
+            num_bottleneck_layers=args.num_bottleneck_layers,  # ← новый параметр
+            freeze_bert=(args.freeze_bert != "none"),
             use_audio=not args.no_audio,
             use_visual=not args.no_visual,
         )
@@ -224,6 +217,7 @@ def save_config(args, exp_dir: str) -> None:
         f"num_classes          = 6",
         f"hidden_dim           = 128",
         f"num_bottleneck_tokens= {args.num_bottleneck_tokens}",
+        f"num_bottleneck_layers= {args.num_bottleneck_layers}",
         f"batch_size           = {args.batch_size}",
         f"lr                   = {args.lr}",
         f"lr_bert              = {args.lr_bert}",
@@ -235,6 +229,8 @@ def save_config(args, exp_dir: str) -> None:
         f"max_audio_len        = 100",
         f"max_visual_len       = 100",
         f"class_weights        = yes",
+        f"label_smoothing      = {args.label_smoothing}",
+        f"early_stopping       = {args.patience} epochs",
         f"data_path            = {args.data_path}",
     ]
     with open(path, "w") as f:
@@ -250,10 +246,10 @@ def save_metrics(
     test_preds: list,
     test_labels: list,
 ) -> None:
-    acc  = accuracy_score(test_labels, test_preds)
-    f1   = f1_score(test_labels, test_preds, average="macro", zero_division=0)
-    cm   = confusion_matrix(test_labels, test_preds)
-    rep  = classification_report(
+    acc = accuracy_score(test_labels, test_preds)
+    f1  = f1_score(test_labels, test_preds, average="macro", zero_division=0)
+    cm  = confusion_matrix(test_labels, test_preds)
+    rep = classification_report(
         test_labels, test_preds,
         target_names=EMOTION_NAMES, digits=3, zero_division=0,
     )
@@ -274,8 +270,6 @@ def save_metrics(
         f.write(rep + "\n")
 
     print(f"  📊 metrics.txt → {path}")
-
-    # Дублируем в консоль
     print(f"\n{'='*55}")
     print(f"TEST | loss={test_loss:.4f}  acc={acc:.4f}  macro_f1={f1:.4f}")
     print(f"{'='*55}")
@@ -299,26 +293,27 @@ def main() -> None:
     parser.add_argument("--max_len",    type=int,   default=128)
 
     # ── Bottleneck-специфичные параметры ──────────────────────────────────
-    parser.add_argument("--num_bottleneck_tokens", type=int, default=8,
-                        help="Число learnable bottleneck токенов")
+    parser.add_argument("--num_bottleneck_tokens", type=int, default=16)
+    parser.add_argument("--num_bottleneck_layers", type=int, default=2,   # ← новый
+                        help="Число слоёв MBT fusion (рекомендуется 2-3)")
     parser.add_argument("--freeze_bert", type=str, default="full",
-                        choices=["full", "partial", "none"],
-                        help="full=все заморожено, partial=разморозить layers 9-11, none=всё обучается")
-    parser.add_argument("--lr_bert", type=float, default=None,
-                        help="LR для BERT-слоёв при partial unfreeze (если None — использует --lr)")
-    parser.add_argument("--no_audio",  action="store_true",
-                        help="Ablation: исключить audio из fusion")
-    parser.add_argument("--no_visual", action="store_true",
-                        help="Ablation: исключить visual из fusion")
+                        choices=["full", "partial", "none"])
+    parser.add_argument("--lr_bert", type=float, default=None)
+    parser.add_argument("--no_audio",  action="store_true")
+    parser.add_argument("--no_visual", action="store_true")
+
+    # ── Новые параметры обучения ──────────────────────────────────────────
+    parser.add_argument("--label_smoothing", type=float, default=0.1,     # ← новый
+                        help="Label smoothing для CrossEntropyLoss (0.0 = выкл)")
+    parser.add_argument("--patience", type=int, default=5,                # ← новый
+                        help="Early stopping: стоп если val F1 не растёт N эпох")
 
     # ── Сохранение эксперимента ───────────────────────────────────────────
-    parser.add_argument("--exp_dir", type=str, default=None,
-                        help="Папка для сохранения config/metrics/checkpoint")
+    parser.add_argument("--exp_dir", type=str, default=None)
 
     args = parser.parse_args()
     set_seed(42)
 
-    # ── Создать папку эксперимента ────────────────────────────────────────
     if args.exp_dir:
         os.makedirs(args.exp_dir, exist_ok=True)
         save_config(args, args.exp_dir)
@@ -336,7 +331,7 @@ def main() -> None:
     val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
     test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
 
-    # ── Веса классов (только train) ───────────────────────────────────────
+    # ── Веса классов ──────────────────────────────────────────────────────
     train_labels = np.array([s["label"] for s in train_dataset.samples])
     class_weights = compute_class_weight(
         class_weight="balanced",
@@ -349,7 +344,7 @@ def main() -> None:
     # ── Модель ────────────────────────────────────────────────────────────
     model = build_model(args).to(device)
 
-    # ── Partial unfreeze: разморозить BERT layers 9, 10, 11 ──────────────
+    # ── Partial unfreeze BERT ─────────────────────────────────────────────
     if args.model == "bottleneck" and args.freeze_bert == "partial":
         unfrozen = 0
         for name, param in model.bert.named_parameters():
@@ -358,12 +353,10 @@ def main() -> None:
                 unfrozen += 1
         print(f"  🔓 Partial unfreeze BERT: разморожено {unfrozen} параметров (layers 9-11)")
 
-    # ── Optimizer: раздельные lr для BERT и остальной модели ─────────────
+    # ── Optimizer ─────────────────────────────────────────────────────────
     if args.model == "bottleneck" and args.freeze_bert == "partial" and args.lr_bert is not None:
-        bert_params  = [p for n, p in model.named_parameters()
-                        if "bert" in n and p.requires_grad]
-        other_params = [p for n, p in model.named_parameters()
-                        if "bert" not in n and p.requires_grad]
+        bert_params  = [p for n, p in model.named_parameters() if "bert" in n and p.requires_grad]
+        other_params = [p for n, p in model.named_parameters() if "bert" not in n and p.requires_grad]
         optimizer = torch.optim.AdamW([
             {"params": bert_params,  "lr": args.lr_bert},
             {"params": other_params, "lr": args.lr},
@@ -377,25 +370,26 @@ def main() -> None:
         )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-        eta_min=1e-6,
+        optimizer, T_max=args.epochs, eta_min=1e-6,
     )
 
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    # ── Loss с label smoothing ─────────────────────────────────────────────
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights,
+        label_smoothing=args.label_smoothing,   # ← было 0.0, теперь 0.1
+    )
 
-    # ── Путь для сохранения лучшей модели ─────────────────────────────────
-    if args.exp_dir:
-        save_path = os.path.join(args.exp_dir, "best_model.pt")
-    else:
-        save_path = f"best_{args.model}.pt"
+    # ── Путь для сохранения ───────────────────────────────────────────────
+    save_path = os.path.join(args.exp_dir, "best_model.pt") if args.exp_dir else f"best_{args.model}.pt"
 
     # ── Цикл обучения ─────────────────────────────────────────────────────
-    best_val_f1  = 0.0
-    best_epoch   = 1
+    best_val_f1    = 0.0
+    best_epoch     = 1
+    epochs_no_improve = 0           # ← счётчик для early stopping
 
     print(f"\nМодель: {args.model} | Device: {device}")
-    print(f"Bottleneck tokens: {args.num_bottleneck_tokens} | freeze_bert: {args.freeze_bert}")
+    print(f"Bottleneck tokens: {args.num_bottleneck_tokens} | layers: {args.num_bottleneck_layers} | freeze_bert: {args.freeze_bert}")
+    print(f"label_smoothing: {args.label_smoothing} | early_stop patience: {args.patience}")
     print(f"use_audio: {not args.no_audio} | use_visual: {not args.no_visual}")
     print("=" * 65)
 
@@ -418,8 +412,17 @@ def main() -> None:
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             best_epoch  = epoch
+            epochs_no_improve = 0
             torch.save(model.state_dict(), save_path)
             print(f"  ✅ Лучший val F1={best_val_f1:.4f} → {save_path}")
+        else:
+            epochs_no_improve += 1
+            print(f"  ⏳ Нет улучшения {epochs_no_improve}/{args.patience}")
+
+            # ── Early stopping ────────────────────────────────────────────
+            if epochs_no_improve >= args.patience:
+                print(f"\n🛑 Early stopping на epoch {epoch} (patience={args.patience})")
+                break
 
     print(f"\n🔥 Обучение завершено! Лучший val F1: {best_val_f1:.4f} (epoch {best_epoch})")
 

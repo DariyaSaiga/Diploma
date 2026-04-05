@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from dataset import MoseiDataset
 from utils import device, set_seed
 
-EMOTION_NAMES = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
+EMOTION_NAMES = ["happy", "sad", "anger", "surprise", "disgust", "fear"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

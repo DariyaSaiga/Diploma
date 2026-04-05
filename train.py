@@ -1,15 +1,24 @@
 import argparse
+import os
+import pickle
 from functools import partial
 
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+)
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
 
 from dataset import MoseiDataset
 from utils import device, set_seed
+
+EMOTION_NAMES = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -73,9 +82,6 @@ def collate_fn(batch: list[dict], max_audio_len: int = 100, max_visual_len: int 
 def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
     """
     Прогоняет один батч через нужную модель и возвращает logits.
-
-    Добавляешь новую модель — просто добавь elif ниже.
-    Менять train_one_epoch / evaluate не нужно.
     """
     if model_type == "text":
         return model(
@@ -159,24 +165,121 @@ def evaluate(
     return total_loss / len(loader), acc, f1
 
 
+@torch.no_grad()
+def evaluate_full(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    model_type: str,
+) -> tuple[float, list, list]:
+    """Как evaluate, но возвращает (loss, preds, labels) для confusion matrix."""
+    model.eval()
+    total_loss = 0.0
+    all_preds, all_labels = [], []
+
+    for batch in loader:
+        labels = batch["label"].to(device)
+        outputs = run_batch(model, batch, model_type)
+
+        total_loss += criterion(outputs, labels).item()
+        all_preds.extend(torch.argmax(outputs, dim=1).cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
+    return total_loss / len(loader), all_preds, all_labels
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Model factory — добавляешь модель здесь и больше нигде
+# Model factory
 # ──────────────────────────────────────────────────────────────────────────────
 
-def build_model(model_type: str) -> nn.Module:
-    if model_type == "text":
+def build_model(args) -> nn.Module:
+    if args.model == "text":
         from text_only_bert import TextOnlyBert
         return TextOnlyBert()
 
-    if model_type == "av":
+    if args.model == "av":
         from audio_visual_baseline import AudioVisualBaseline
         return AudioVisualBaseline()
 
-    if model_type == "bottleneck":
+    if args.model == "bottleneck":
         from bottleneck_fusion import BottleneckFusion
-        return BottleneckFusion()
+        return BottleneckFusion(
+            num_bottleneck_tokens=args.num_bottleneck_tokens,
+            freeze_bert=(args.freeze_bert != "none"),   # full/partial → freeze at init
+            use_audio=not args.no_audio,
+            use_visual=not args.no_visual,
+        )
 
-    raise ValueError(f"Неизвестный тип модели: '{model_type}'")
+    raise ValueError(f"Неизвестный тип модели: '{args.model}'")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Сохранение эксперимента
+# ──────────────────────────────────────────────────────────────────────────────
+
+def save_config(args, exp_dir: str) -> None:
+    path = os.path.join(exp_dir, "config.txt")
+    lines = [
+        f"model                = {args.model}",
+        f"num_classes          = 6",
+        f"hidden_dim           = 128",
+        f"num_bottleneck_tokens= {args.num_bottleneck_tokens}",
+        f"batch_size           = {args.batch_size}",
+        f"lr                   = {args.lr}",
+        f"lr_bert              = {args.lr_bert}",
+        f"epochs               = {args.epochs}",
+        f"freeze_bert          = {args.freeze_bert}",
+        f"no_audio             = {args.no_audio}",
+        f"no_visual            = {args.no_visual}",
+        f"max_text_len         = {args.max_len}",
+        f"max_audio_len        = 100",
+        f"max_visual_len       = 100",
+        f"class_weights        = yes",
+        f"data_path            = {args.data_path}",
+    ]
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"  📄 config.txt → {path}")
+
+
+def save_metrics(
+    exp_dir: str,
+    best_val_f1: float,
+    best_epoch: int,
+    test_loss: float,
+    test_preds: list,
+    test_labels: list,
+) -> None:
+    acc  = accuracy_score(test_labels, test_preds)
+    f1   = f1_score(test_labels, test_preds, average="macro", zero_division=0)
+    cm   = confusion_matrix(test_labels, test_preds)
+    rep  = classification_report(
+        test_labels, test_preds,
+        target_names=EMOTION_NAMES, digits=3, zero_division=0,
+    )
+
+    path = os.path.join(exp_dir, "metrics.txt")
+    with open(path, "w") as f:
+        f.write(f"Best epoch        : {best_epoch}\n")
+        f.write(f"Best val macro F1 : {best_val_f1:.4f}\n")
+        f.write(f"Test loss         : {test_loss:.4f}\n")
+        f.write(f"Test accuracy     : {acc:.4f}\n")
+        f.write(f"Test macro F1     : {f1:.4f}\n")
+        f.write("\n── Confusion Matrix ──────────────────────────────────\n")
+        header = "         " + "  ".join(f"{n[:4]:>4}" for n in EMOTION_NAMES)
+        f.write(header + "\n")
+        for i, row in enumerate(cm):
+            f.write(f"  {EMOTION_NAMES[i]:8s}" + "  ".join(f"{v:4d}" for v in row) + "\n")
+        f.write("\n── Classification Report ─────────────────────────────\n")
+        f.write(rep + "\n")
+
+    print(f"  📊 metrics.txt → {path}")
+
+    # Дублируем в консоль
+    print(f"\n{'='*55}")
+    print(f"TEST | loss={test_loss:.4f}  acc={acc:.4f}  macro_f1={f1:.4f}")
+    print(f"{'='*55}")
+    print(rep)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -185,23 +288,42 @@ def build_model(model_type: str) -> nn.Module:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train CMU-MOSEI models")
-    parser.add_argument(
-        "--model", type=str, default="text",
-        choices=["text", "av", "bottleneck"],
-        help="Какую модель обучать",
-    )
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--data_path", type=str, default="mosei_cleaned.pkl")
-    parser.add_argument("--max_len", type=int, default=128)
-    args = parser.parse_args()
 
+    # ── Основные параметры ────────────────────────────────────────────────
+    parser.add_argument("--model",      type=str, default="text",
+                        choices=["text", "av", "bottleneck"])
+    parser.add_argument("--epochs",     type=int,   default=10)
+    parser.add_argument("--batch_size", type=int,   default=32)
+    parser.add_argument("--lr",         type=float, default=1e-3)
+    parser.add_argument("--data_path",  type=str,   default="mosei_cleaned.pkl")
+    parser.add_argument("--max_len",    type=int,   default=128)
+
+    # ── Bottleneck-специфичные параметры ──────────────────────────────────
+    parser.add_argument("--num_bottleneck_tokens", type=int, default=8,
+                        help="Число learnable bottleneck токенов")
+    parser.add_argument("--freeze_bert", type=str, default="full",
+                        choices=["full", "partial", "none"],
+                        help="full=все заморожено, partial=разморозить layers 9-11, none=всё обучается")
+    parser.add_argument("--lr_bert", type=float, default=None,
+                        help="LR для BERT-слоёв при partial unfreeze (если None — использует --lr)")
+    parser.add_argument("--no_audio",  action="store_true",
+                        help="Ablation: исключить audio из fusion")
+    parser.add_argument("--no_visual", action="store_true",
+                        help="Ablation: исключить visual из fusion")
+
+    # ── Сохранение эксперимента ───────────────────────────────────────────
+    parser.add_argument("--exp_dir", type=str, default=None,
+                        help="Папка для сохранения config/metrics/checkpoint")
+
+    args = parser.parse_args()
     set_seed(42)
 
-    # Датасеты
-    import pickle
+    # ── Создать папку эксперимента ────────────────────────────────────────
+    if args.exp_dir:
+        os.makedirs(args.exp_dir, exist_ok=True)
+        save_config(args, args.exp_dir)
 
+    # ── Датасеты ──────────────────────────────────────────────────────────
     with open(args.data_path, "rb") as f:
         data = pickle.load(f)
 
@@ -214,7 +336,7 @@ def main() -> None:
     val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
     test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=2, collate_fn=cfn)
 
-    # Веса классов — компенсируем дисбаланс (happy ×25 > fear)
+    # ── Веса классов (только train) ───────────────────────────────────────
     train_labels = np.array([s["label"] for s in train_dataset.samples])
     class_weights = compute_class_weight(
         class_weight="balanced",
@@ -224,16 +346,51 @@ def main() -> None:
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
     print(f"Class weights: {class_weights.cpu().numpy().round(3)}")
 
-    # Модель
-    model = build_model(args.model).to(device)
+    # ── Модель ────────────────────────────────────────────────────────────
+    model = build_model(args).to(device)
 
-    # Loss с весами + optimizer
+    # ── Partial unfreeze: разморозить BERT layers 9, 10, 11 ──────────────
+    if args.model == "bottleneck" and args.freeze_bert == "partial":
+        unfrozen = 0
+        for name, param in model.bert.named_parameters():
+            if any(f"encoder.layer.{i}." in name for i in [9, 10, 11]):
+                param.requires_grad = True
+                unfrozen += 1
+        print(f"  🔓 Partial unfreeze BERT: разморожено {unfrozen} параметров (layers 9-11)")
+
+    # ── Optimizer: раздельные lr для BERT и остальной модели ─────────────
+    if args.model == "bottleneck" and args.freeze_bert == "partial" and args.lr_bert is not None:
+        bert_params  = [p for n, p in model.named_parameters()
+                        if "bert" in n and p.requires_grad]
+        other_params = [p for n, p in model.named_parameters()
+                        if "bert" not in n and p.requires_grad]
+        optimizer = torch.optim.Adam([
+            {"params": bert_params,  "lr": args.lr_bert},
+            {"params": other_params, "lr": args.lr},
+        ])
+        print(f"  ⚙️  Optimizer: BERT lr={args.lr_bert}, остальное lr={args.lr}")
+    else:
+        optimizer = torch.optim.Adam(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=args.lr,
+        )
+
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    best_val_f1 = 0.0
+    # ── Путь для сохранения лучшей модели ─────────────────────────────────
+    if args.exp_dir:
+        save_path = os.path.join(args.exp_dir, "best_model.pt")
+    else:
+        save_path = f"best_{args.model}.pt"
+
+    # ── Цикл обучения ─────────────────────────────────────────────────────
+    best_val_f1  = 0.0
+    best_epoch   = 1
+
     print(f"\nМодель: {args.model} | Device: {device}")
-    print("=" * 55)
+    print(f"Bottleneck tokens: {args.num_bottleneck_tokens} | freeze_bert: {args.freeze_bert}")
+    print(f"use_audio: {not args.no_audio} | use_visual: {not args.no_visual}")
+    print("=" * 65)
 
     for epoch in range(1, args.epochs + 1):
         train_loss, train_acc, train_f1 = train_one_epoch(
@@ -251,21 +408,28 @@ def main() -> None:
 
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
-            save_path = f"best_{args.model}.pt"
+            best_epoch  = epoch
             torch.save(model.state_dict(), save_path)
-            print(f"  ✅ Сохранена лучшая модель → {save_path}")
+            print(f"  ✅ Лучший val F1={best_val_f1:.4f} → {save_path}")
 
-    print(f"\n🔥 Обучение завершено! Лучший val F1: {best_val_f1:.4f}")
+    print(f"\n🔥 Обучение завершено! Лучший val F1: {best_val_f1:.4f} (epoch {best_epoch})")
 
-    # ── Финальная оценка на test set ──────────────────────────────────────────
+    # ── Финальная оценка на test set ──────────────────────────────────────
     print("\nЗагружаем лучшую модель для оценки на test set...")
     model.load_state_dict(torch.load(save_path, map_location=device))
-    test_loss, test_acc, test_f1 = evaluate(model, test_loader, criterion, args.model)
-    print("=" * 55)
-    print(
-        f"TEST | loss={test_loss:.4f}  acc={test_acc:.4f}  f1={test_f1:.4f}"
+    test_loss, test_preds, test_labels = evaluate_full(
+        model, test_loader, criterion, args.model
     )
-    print("=" * 55)
+
+    if args.exp_dir:
+        save_metrics(args.exp_dir, best_val_f1, best_epoch,
+                     test_loss, test_preds, test_labels)
+    else:
+        acc = accuracy_score(test_labels, test_preds)
+        f1  = f1_score(test_labels, test_preds, average="macro", zero_division=0)
+        print("=" * 55)
+        print(f"TEST | loss={test_loss:.4f}  acc={acc:.4f}  f1={f1:.4f}")
+        print("=" * 55)
 
 
 if __name__ == "__main__":

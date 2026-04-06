@@ -81,9 +81,11 @@ def run_batch(model, batch: dict, model_type: str) -> torch.Tensor:
         return model(
             audio=batch["audio"].to(device),
             visual=batch["visual"].to(device),
+            audio_mask=batch["audio_mask"].to(device),
+            visual_mask=batch["visual_mask"].to(device),
         )
 
-    if model_type == "bottleneck":
+    if model_type in ("bottleneck", "simple_fusion"):
         return model(
             input_ids=batch["input_ids"].to(device),
             attention_mask=batch["attention_mask"].to(device),
@@ -226,6 +228,10 @@ def build_model(args) -> nn.Module:
         from audio_visual_baseline import AudioVisualBaseline
         return AudioVisualBaseline()
 
+    if args.model == "simple_fusion":
+        from simple_fusion import SimpleFusion
+        return SimpleFusion()
+
     if args.model == "bottleneck":
         from bottleneck_fusion import BottleneckFusion
         return BottleneckFusion(
@@ -319,7 +325,7 @@ def main() -> None:
 
     # ── Основные параметры ────────────────────────────────────────────────
     parser.add_argument("--model",      type=str, default="text",
-                        choices=["text", "av", "bottleneck"])
+                        choices=["text", "av", "simple_fusion", "bottleneck"])
     parser.add_argument("--epochs",     type=int,   default=10)
     parser.add_argument("--batch_size", type=int,   default=16)
     parser.add_argument("--lr",         type=float, default=1e-3)

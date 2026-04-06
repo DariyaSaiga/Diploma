@@ -26,20 +26,24 @@ class AudioVisualBaseline(nn.Module):
             nn.Linear(hidden_dim, num_classes),
         )
 
-    def forward(self, audio, visual):
-        # audio:  (B, 50, 74)
-        # visual: (B, 50, 713)
+    @staticmethod
+    def _masked_mean(seq: torch.Tensor, mask=None) -> torch.Tensor:
+        """seq:(B,T,D)  mask:(B,T) 1=real, None=global mean → (B,D)"""
+        if mask is None:
+            return seq.mean(dim=1)
+        m = mask.unsqueeze(-1).float()
+        return (seq * m).sum(1) / m.sum(1).clamp(min=1)
 
-        # Проецируем каждый временной шаг
-        audio_emb  = self.audio_proj(audio)    # (B, 50, 128)
-        visual_emb = self.visual_proj(visual)  # (B, 50, 128)
+    def forward(self, audio, visual, audio_mask=None, visual_mask=None):
+        # audio:  (B, T, 74)
+        # visual: (B, T, 713)
 
-        # Mean pooling по временной оси (dim=1)
-        audio_emb  = audio_emb.mean(dim=1)   # (B, 128)
-        visual_emb = visual_emb.mean(dim=1)  # (B, 128)
+        audio_emb  = self.audio_proj(audio)    # (B, T, 128)
+        visual_emb = self.visual_proj(visual)  # (B, T, 128)
 
-        # Склеиваем и классифицируем
+        audio_emb  = self._masked_mean(audio_emb,  audio_mask)   # (B, 128)
+        visual_emb = self._masked_mean(visual_emb, visual_mask)  # (B, 128)
+
         fused  = torch.cat([audio_emb, visual_emb], dim=1)  # (B, 256)
         logits = self.classifier(fused)                      # (B, 6)
-
         return logits

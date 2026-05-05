@@ -14,7 +14,7 @@ from sklearn.metrics import (
 )
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from bottleneck_fusion import BottleneckFusion
+from Diploma.backend.bottleneck_fusion import BottleneckFusion
 
 from dataset import MoseiDataset
 from utils import device, set_seed
@@ -233,7 +233,7 @@ def build_model(args) -> nn.Module:
         return SimpleFusion()
 
     if args.model == "bottleneck":
-        from bottleneck_fusion import BottleneckFusion
+        from Diploma.backend.bottleneck_fusion import BottleneckFusion
         return BottleneckFusion(
             num_bottleneck_tokens=args.num_bottleneck_tokens,
             num_bottleneck_layers=args.num_bottleneck_layers,  # ← новый параметр

@@ -10,6 +10,10 @@ preprocess_bottleneck.py
 """
 
 import pickle
+with open("scaler_audio.pkl", "wb") as f:
+    pickle.dump(audio_scaler, f)
+with open("scaler_visual.pkl", "wb") as f:
+    pickle.dump(visual_scaler, f)
 from collections import Counter
 
 import h5py

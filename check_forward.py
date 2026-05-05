@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import MoseiDataset
-from bottleneck_fusion import BottleneckFusion
+from Diploma.backend.bottleneck_fusion import BottleneckFusion
 from train import collate_fn
 from utils import device
 

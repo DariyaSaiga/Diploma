@@ -135,6 +135,8 @@ def main() -> None:
         choices=["text", "av", "bottleneck"],
         help="Какую модель обучать",
     )
+    parser.add_argument("--load_model", type=str, default=None)
+    
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -170,7 +172,10 @@ def main() -> None:
 
     # Модель
     model = build_model(args.model).to(device)
-
+    if args.load_model is not None:
+        print(f"🔄 Загружаем модель из {args.load_model}")
+        model.load_state_dict(torch.load(args.load_model, map_location=device))
+        
     # Loss с весами + optimizer
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -211,6 +216,32 @@ def main() -> None:
     )
     print("=" * 55)
 
+    # ── Confusion matrix ──────────────────────────────────────────
+    from sklearn.metrics import confusion_matrix
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    all_preds, all_labels = [], []
+    model.eval()
+    with torch.no_grad():
+        for batch in test_loader:  # или val_loader
+            labels = batch["label"].to(device)
+            outputs = run_batch(model, batch, args.model)
+            preds = torch.argmax(outputs, dim=1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    cm = confusion_matrix(all_labels, all_preds)
+    plt.figure(figsize=(8,6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                xticklabels=["neutral","happy","sad","angry","fear","disgust"],
+                yticklabels=["neutral","happy","sad","angry","fear","disgust"])
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png")  # <- сохраняем график
+    print("✅ Confusion matrix saved to confusion_matrix.png")
 
 if __name__ == "__main__":
     main()

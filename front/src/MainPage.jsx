@@ -16,9 +16,9 @@ const MODALITIES = [
 ];
 
 const TIMELINE = [
-  { phase: "Data collection",      desc: "MELD, CMU-MOSI, IEMOCAP datasets",        icon: "∷" },
-  { phase: "Feature extraction",   desc: "Audio MFCC · Visual OpenFace · Text BERT", icon: "◈" },
-  { phase: "Attention bottleneck", desc: "Cross-modal transformer fusion layer",     icon: "⬡" },
+  { phase: "Data collection",      desc: "CMU-MOSEI dataset",        icon: "∷" },
+  { phase: "Feature extraction",   desc: "Audio 1DCNN · Visual OpenFace · Text BERT", icon: "◈" },
+  { phase: "Attention bottleneck", desc: "Feature fusion (text + audio + video)",     icon: "⬡" },
   { phase: "Classification",       desc: "6-class emotion output with confidence",   icon: "◎" },
 ];
 
@@ -475,7 +475,7 @@ export default function MainPage() {
           <div style={{ position:"absolute", width:500, height:500, border:"1px solid #0d2040", borderRadius:"50%", top:"50%", left:"50%", transform:"translate(-50%,-50%)", animation:"spin 40s linear infinite" }} />
           <div style={{ position:"absolute", width:360, height:360, border:"1px dashed #0d3060", borderRadius:"50%", top:"50%", left:"50%", transform:"translate(-50%,-50%)", animation:"spin 25s linear infinite reverse" }} />
           <div style={{ fontFamily:"'Space Mono',monospace", fontSize:11, letterSpacing:3, color:"#4A90D9", border:"1px solid #1a3a6a", padding:"6px 18px", borderRadius:2, marginBottom:"2rem", position:"relative", zIndex:1 }}>
-            Bachelor's Thesis · 2025
+            Bachelor's Thesis · 2026
           </div>
           <h1 style={{ fontSize:"clamp(2rem,5vw,3.8rem)", fontWeight:800, lineHeight:1.1, textAlign:"center", maxWidth:800, position:"relative", zIndex:1, marginBottom:"1.5rem" }}>
             <span style={{ color:"#e8f0ff" }}>Development of a </span>

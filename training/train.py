@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
 import logging
 

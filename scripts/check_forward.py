@@ -1,11 +1,8 @@
-#!/usr/bin/env python
-"""Check model forward pass and dataset loading."""
-
 import argparse
 import torch
 from core.bottleneck_fusion import BottleneckFusion
 from data.dataset import make_bottleneck_loaders
-from utils.utils import device
+from diploma_utils.utils import device
 
 
 def main():

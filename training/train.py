@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from core.bottleneck_fusion import BottleneckFusion
 from data.dataset import make_bottleneck_loaders
 from training.losses import compute_separation_loss, compute_invariant_loss, compute_reconstruction_loss
-from utils.utils import device, set_seed
+from diploma_utils.utils import device, set_seed
 
 
 EMOTIONS = ["happy", "sad", "anger", "surprise", "disgust", "fear"]

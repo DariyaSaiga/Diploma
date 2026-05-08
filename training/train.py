@@ -1,12 +1,18 @@
-import argparse
+import warnings
+warnings.filterwarnings('ignore')
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import argparse
 import pickle
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
-from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
+import logging
+
+logging.getLogger('transformers').setLevel(logging.ERROR)
 
 from core.bottleneck_fusion import BottleneckFusion
 from data.dataset import make_bottleneck_loaders

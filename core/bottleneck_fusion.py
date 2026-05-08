@@ -87,14 +87,17 @@ class BottleneckFusion(nn.Module):
 
         # Encode
         bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        text_enc = self.text_proj(bert_out.last_hidden_state[:, 0, :])
+        text_orig = bert_out.last_hidden_state[:, 0, :]  # Keep original (B, 768)
+        text_enc = self.text_proj(text_orig)  # Project to (B, 128)
 
+        audio_orig = audio  # Keep original
         audio_enc = self.audio_proj(audio)
         if audio_mask is not None:
             audio_enc = self._masked_mean(audio_enc, audio_mask)
         else:
             audio_enc = audio_enc.mean(dim=1)
 
+        visual_orig = visual  # Keep original
         visual_enc = self.visual_proj(visual)
         if visual_mask is not None:
             visual_enc = self._masked_mean(visual_enc, visual_mask)
@@ -154,11 +157,11 @@ class BottleneckFusion(nn.Module):
             }
             recon_data = {
                 'text_recon': text_recon,
-                'text_original': text_enc,
+                'text_original': text_orig,
                 'audio_recon': audio_recon,
-                'audio_original': audio_enc,
+                'audio_original': audio_orig,
                 'visual_recon': visual_recon,
-                'visual_original': visual_enc,
+                'visual_original': visual_orig,
             }
             return logits, domain_data, recon_data
 

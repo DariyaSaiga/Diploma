@@ -19,7 +19,7 @@ python training/train.py \
   --alpha_inv 0.05 \
   --alpha_rec 0.01 \
   --pretrained_path experiments/stage1_domain_sep/best_model.pt \
-  --data_path mosei_bottleneck.pkl \
+  --data_path "/content/drive/MyDrive/Дипломка_правильная/mosei_bottleneck.pkl" \
   --exp_dir experiments/stage2_domain_sep
 
 echo "Stage 2 done. Results: cat experiments/stage2_domain_sep/metrics.txt"

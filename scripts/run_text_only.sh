@@ -13,7 +13,7 @@ python training/train.py \
   --freeze_bert partial \
   --patience 5 \
   --label_smoothing 0.1 \
-  --data_path mosei_bottleneck.pkl \
+  --data_path "/content/drive/MyDrive/Дипломка_правильная/mosei_bottleneck.pkl" \
   --exp_dir experiments/text_only_bert
 
 echo "Done. Results: cat experiments/text_only_bert/metrics.txt"

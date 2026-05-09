@@ -11,7 +11,7 @@ python training/train.py \
   --lr 1e-3 \
   --patience 5 \
   --label_smoothing 0.1 \
-  --data_path mosei_bottleneck.pkl \
+  --data_path "/content/drive/MyDrive/Дипломка_правильная/mosei_bottleneck.pkl" \
   --exp_dir experiments/audio_visual_baseline
 
 echo "Done. Results: cat experiments/audio_visual_baseline/metrics.txt"

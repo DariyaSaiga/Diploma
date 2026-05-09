@@ -14,8 +14,7 @@ from sklearn.metrics import (
 )
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from Diploma.backend.bottleneck_fusion import BottleneckFusion
-
+from backend.bottleneck_fusion import BottleneckFusion
 from dataset import MoseiDataset
 from utils import device, set_seed
 
@@ -233,7 +232,6 @@ def build_model(args) -> nn.Module:
         return SimpleFusion()
 
     if args.model == "bottleneck":
-        from Diploma.backend.bottleneck_fusion import BottleneckFusion
         return BottleneckFusion(
             num_bottleneck_tokens=args.num_bottleneck_tokens,
             num_bottleneck_layers=args.num_bottleneck_layers,  # ← новый параметр
@@ -329,7 +327,7 @@ def main() -> None:
     parser.add_argument("--epochs",     type=int,   default=10)
     parser.add_argument("--batch_size", type=int,   default=16)
     parser.add_argument("--lr",         type=float, default=1e-3)
-    parser.add_argument("--data_path",  type=str,   default="mosei_cleaned.pkl")
+    parser.add_argument("--data_path",  type=str,   default="mosei_bottleneck.pkl")
     parser.add_argument("--max_len",    type=int,   default=128)
 
     # ── Bottleneck-специфичные параметры ──────────────────────────────────

@@ -3,166 +3,323 @@ import torch.nn as nn
 from transformers import BertModel
 
 
+class ConvGRUEncoder(nn.Module):
+    """Conv1D (3 layers) + Bidirectional GRU for temporal sequences."""
+
+    def __init__(self, input_dim, conv_dim=128, gru_hidden=128, dropout=0.1):
+        super().__init__()
+        self.convs = nn.Sequential(
+            nn.Conv1d(input_dim, conv_dim, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+        self.gru = nn.GRU(conv_dim, gru_hidden, batch_first=True, bidirectional=True)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # x: (B, T, input_dim)
+        x = x.transpose(1, 2)   # (B, input_dim, T)
+        x = self.convs(x)       # (B, conv_dim, T)
+        x = x.transpose(1, 2)   # (B, T, conv_dim)
+        x, _ = self.gru(x)      # (B, T, gru_hidden*2)
+        return self.dropout(x)
+
+
+class DomainEncoder(nn.Module):
+    """2-layer Transformer encoder for domain separation."""
+
+    def __init__(self, hidden_dim=128, num_layers=2, num_heads=8, ff_dim=256, dropout=0.1):
+        super().__init__()
+        layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim, nhead=num_heads, dim_feedforward=ff_dim,
+            dropout=dropout, batch_first=True, norm_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+
+    def forward(self, x, padding_mask=None):
+        # padding_mask: True=valid (our convention) → invert for Transformer (True=ignore)
+        mask = ~padding_mask if padding_mask is not None else None
+        return self.encoder(x, src_key_padding_mask=mask)
+
+
+class CrossAttentionBlock(nn.Module):
+    """Cross-attention with residual connections, LayerNorm, and feedforward."""
+
+    def __init__(self, hidden_dim=128, num_heads=8, dropout=0.1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(
+            hidden_dim, num_heads, dropout=dropout, batch_first=True
+        )
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.ff = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+        )
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, query, kv):
+        attn_out, _ = self.attn(query, kv, kv)
+        x = self.norm1(query + self.dropout(attn_out))
+        x = self.norm2(x + self.dropout(self.ff(x)))
+        return x
+
+
 class BottleneckFusion(nn.Module):
-    """Domain-Separated Bottleneck Architecture for multimodal emotion recognition."""
+    """Domain-Separated Bottleneck Architecture for multimodal emotion recognition.
+
+    Architecture: Encoders → Domain Separation → Bottleneck → Fusion → Classifier
+    Information flow: Invariant → Bottleneck Tokens → Private (cross-domain)
+    """
 
     def __init__(self, num_classes=6, hidden_dim=128, num_bottleneck_tokens=16,
-                 dropout=0.1, freeze_bert=True):
+                 dropout=0.1, freeze_bert=True, use_audio=True, use_visual=True,
+                 audio_input_dim=74, visual_input_dim=713):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_bottleneck_tokens = num_bottleneck_tokens
-        self.num_classes = num_classes
+        self.use_audio = use_audio
+        self.use_visual = use_visual
 
-        # Input Encoders
+        # ── Text Encoder (BERT → projection) ──
         self.bert = BertModel.from_pretrained("bert-base-uncased")
-        if freeze_bert:
-            for param in self.bert.parameters():
-                param.requires_grad = False
+        self._apply_bert_freeze(freeze_bert)
         self.text_proj = nn.Linear(768, hidden_dim)
-        self.audio_proj = nn.Linear(74, hidden_dim)
-        self.visual_proj = nn.Linear(713, hidden_dim)
 
-        # Domain Separation
-        self.text_invariant = self._build_domain_encoder(hidden_dim)
-        self.text_private = self._build_domain_encoder(hidden_dim)
-        self.audio_invariant = self._build_domain_encoder(hidden_dim)
-        self.audio_private = self._build_domain_encoder(hidden_dim)
-        self.visual_invariant = self._build_domain_encoder(hidden_dim)
-        self.visual_private = self._build_domain_encoder(hidden_dim)
+        # ── Audio Encoder (Conv1D + BiGRU → projection) ──
+        if use_audio:
+            self.audio_encoder = ConvGRUEncoder(
+                audio_input_dim, conv_dim=hidden_dim, gru_hidden=hidden_dim, dropout=dropout
+            )
+            self.audio_proj = nn.Linear(hidden_dim * 2, hidden_dim)
 
-        # Bottleneck Tokens
+        # ── Visual Encoder (Conv1D + BiGRU → projection) ──
+        if use_visual:
+            self.visual_encoder = ConvGRUEncoder(
+                visual_input_dim, conv_dim=hidden_dim, gru_hidden=hidden_dim, dropout=dropout
+            )
+            self.visual_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+
+        # ── Domain Separation (2-layer Transformers) ──
+        self.text_inv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+        self.text_priv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+        if use_audio:
+            self.audio_inv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+            self.audio_priv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+        if use_visual:
+            self.visual_inv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+            self.visual_priv_enc = DomainEncoder(hidden_dim, dropout=dropout)
+
+        # ── Bottleneck Tokens ──
         self.bottleneck_tokens = nn.Parameter(
             torch.randn(num_bottleneck_tokens, hidden_dim) * 0.02
         )
 
-        # Cross-Attention
-        num_heads = 8
-        self.text_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout, batch_first=True)
-        self.audio_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout, batch_first=True)
-        self.visual_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout, batch_first=True)
+        # ── Invariant → Bottleneck conditioning ──
+        self.text_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
+        if use_audio:
+            self.audio_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
+        if use_visual:
+            self.visual_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
 
-        # Reconstruction
-        self.text_reconstruct = self._build_reconstruct_head(hidden_dim, 768)
-        self.audio_reconstruct = self._build_reconstruct_head(hidden_dim, 74)
-        self.visual_reconstruct = self._build_reconstruct_head(hidden_dim, 713)
+        # ── Within-private refinement (private attends to base bottleneck) ──
+        self.text_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
+        if use_audio:
+            self.audio_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
+        if use_visual:
+            self.visual_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
 
-        # Fusion & Classification
-        fusion_dim = hidden_dim * 6
+        # ── Cross-domain attention (private attends to other inv-conditioned bottleneck) ──
+        self.text_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
+        if use_audio:
+            self.audio_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
+        if use_visual:
+            self.visual_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
+
+        # ── Reconstruction Heads: [inv_pool || priv_pool] → original dim ──
+        self.text_recon_head = nn.Sequential(
+            nn.Linear(hidden_dim * 2, 512), nn.ReLU(), nn.Linear(512, 768),
+        )
+        if use_audio:
+            self.audio_recon_head = nn.Sequential(
+                nn.Linear(hidden_dim * 2, 512), nn.ReLU(), nn.Linear(512, audio_input_dim),
+            )
+        if use_visual:
+            self.visual_recon_head = nn.Sequential(
+                nn.Linear(hidden_dim * 2, 512), nn.ReLU(), nn.Linear(512, visual_input_dim),
+            )
+
+        # ── Fusion + Classifier ──
+        num_mod = 1 + int(use_audio) + int(use_visual)
+        fusion_dim = hidden_dim * 2 * num_mod
         self.fusion_head = nn.Sequential(
             nn.Linear(fusion_dim, hidden_dim * 2),
             nn.LayerNorm(hidden_dim * 2),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
         )
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
-    @staticmethod
-    def _build_domain_encoder(hidden_dim):
-        return nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
+    def _apply_bert_freeze(self, mode):
+        if mode is True or mode == "full":
+            for p in self.bert.parameters():
+                p.requires_grad = False
+        elif mode == "partial":
+            for p in self.bert.parameters():
+                p.requires_grad = False
+            for layer in self.bert.encoder.layer[-4:]:
+                for p in layer.parameters():
+                    p.requires_grad = True
 
     @staticmethod
-    def _build_reconstruct_head(hidden_dim, output_dim):
-        return nn.Sequential(
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim),
-        )
-
-    @staticmethod
-    def _masked_mean(seq: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Masked mean pooling: seq(B,T,D) x mask(B,T) -> (B,D)"""
+    def _masked_mean(seq, mask):
+        """Masked mean pooling: (B, T, D) × (B, T) → (B, D)."""
+        if mask is None:
+            return seq.mean(dim=1)
         m = mask.unsqueeze(-1).float()
         return (seq * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)
 
     def forward(self, input_ids, attention_mask, audio=None, visual=None,
                 audio_mask=None, visual_mask=None, return_domains=False):
+        B = input_ids.size(0)
+        N = self.num_bottleneck_tokens
+        D = self.hidden_dim
 
-        # Encode
+        # ══════ ENCODE (sequence-level, no pooling) ══════
         bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        text_orig = bert_out.last_hidden_state[:, 0, :]  # Keep original (B, 768)
-        text_enc = self.text_proj(text_orig)  # Project to (B, 128)
+        bert_hidden = bert_out.last_hidden_state             # (B, T_text, 768)
+        text_seq = self.text_proj(bert_hidden)               # (B, T_text, D)
+        text_mask = attention_mask.bool()
 
-        audio_orig = audio  # Keep original
-        audio_enc = self.audio_proj(audio)
-        if audio_mask is not None:
-            audio_enc = self._masked_mean(audio_enc, audio_mask)
-        else:
-            audio_enc = audio_enc.mean(dim=1)
+        audio_seq, a_mask = None, None
+        if self.use_audio and audio is not None:
+            audio_raw = audio
+            audio_seq = self.audio_proj(self.audio_encoder(audio))  # (B, T_a, D)
+            a_mask = audio_mask.bool() if audio_mask is not None else None
 
-        visual_orig = visual  # Keep original
-        visual_enc = self.visual_proj(visual)
-        if visual_mask is not None:
-            visual_enc = self._masked_mean(visual_enc, visual_mask)
-        else:
-            visual_enc = visual_enc.mean(dim=1)
+        visual_seq, v_mask = None, None
+        if self.use_visual and visual is not None:
+            visual_raw = visual
+            visual_seq = self.visual_proj(self.visual_encoder(visual))  # (B, T_v, D)
+            v_mask = visual_mask.bool() if visual_mask is not None else None
 
-        # Domain Separation
-        text_inv = self.text_invariant(text_enc)
-        text_priv = self.text_private(text_enc)
-        audio_inv = self.audio_invariant(audio_enc)
-        audio_priv = self.audio_private(audio_enc)
-        visual_inv = self.visual_invariant(visual_enc)
-        visual_priv = self.visual_private(visual_enc)
+        # ══════ DOMAIN SEPARATION (sequence-level) ══════
+        text_inv = self.text_inv_enc(text_seq, text_mask)    # (B, T, D)
+        text_priv = self.text_priv_enc(text_seq, text_mask)  # (B, T, D)
 
-        # Reconstruction
-        text_recon = self.text_reconstruct(torch.cat([text_inv, text_priv], dim=1))
-        audio_recon = self.audio_reconstruct(torch.cat([audio_inv, audio_priv], dim=1))
-        visual_recon = self.visual_reconstruct(torch.cat([visual_inv, visual_priv], dim=1))
+        audio_inv = audio_priv = None
+        if audio_seq is not None:
+            audio_inv = self.audio_inv_enc(audio_seq, a_mask)
+            audio_priv = self.audio_priv_enc(audio_seq, a_mask)
 
-        # Bottleneck Cross-Attention
-        batch_size = text_enc.size(0)
-        btokens = self.bottleneck_tokens.unsqueeze(0).expand(batch_size, -1, -1)
+        visual_inv = visual_priv = None
+        if visual_seq is not None:
+            visual_inv = self.visual_inv_enc(visual_seq, v_mask)
+            visual_priv = self.visual_priv_enc(visual_seq, v_mask)
 
-        text_priv_refined, _ = self.text_attention(
-            text_priv.unsqueeze(1), btokens, btokens
-        )
-        text_priv_refined = text_priv_refined.squeeze(1)
+        # ══════ WITHIN-PRIVATE REFINEMENT ══════
+        base_bn = self.bottleneck_tokens.unsqueeze(0).expand(B, -1, -1)  # (B, N, D)
 
-        audio_priv_refined, _ = self.audio_attention(
-            audio_priv.unsqueeze(1), btokens, btokens
-        )
-        audio_priv_refined = audio_priv_refined.squeeze(1)
+        text_priv = self.text_within_attn(text_priv, base_bn)
+        if audio_priv is not None:
+            audio_priv = self.audio_within_attn(audio_priv, base_bn)
+        if visual_priv is not None:
+            visual_priv = self.visual_within_attn(visual_priv, base_bn)
 
-        visual_priv_refined, _ = self.visual_attention(
-            visual_priv.unsqueeze(1), btokens, btokens
-        )
-        visual_priv_refined = visual_priv_refined.squeeze(1)
+        # ══════ CONDITION BOTTLENECK WITH INVARIANT ══════
+        text_inv_pool = self._masked_mean(text_inv, text_mask)  # (B, D)
+        text_cond = self.text_inv_to_bn(text_inv_pool).view(B, N, D)
+        text_bn = base_bn + text_cond
 
-        # Fusion
-        fused = torch.cat([
-            text_inv, text_priv_refined,
-            audio_inv, audio_priv_refined,
-            visual_inv, visual_priv_refined
-        ], dim=1)
+        cond_bns = {"text": text_bn}
 
-        fused = self.fusion_head(fused)
-        logits = self.classifier(fused)
+        audio_inv_pool = None
+        if audio_inv is not None:
+            audio_inv_pool = self._masked_mean(audio_inv, a_mask)
+            audio_cond = self.audio_inv_to_bn(audio_inv_pool).view(B, N, D)
+            cond_bns["audio"] = base_bn + audio_cond
 
-        if return_domains:
-            domain_data = {
-                'text_invariant': text_inv,
-                'text_private': text_priv_refined,
-                'audio_invariant': audio_inv,
-                'audio_private': audio_priv_refined,
-                'visual_invariant': visual_inv,
-                'visual_private': visual_priv_refined,
-            }
-            recon_data = {
-                'text_recon': text_recon,
-                'text_original': text_orig,
-                'audio_recon': audio_recon,
-                'audio_original': audio_orig,
-                'visual_recon': visual_recon,
-                'visual_original': visual_orig,
-            }
-            return logits, domain_data, recon_data
+        visual_inv_pool = None
+        if visual_inv is not None:
+            visual_inv_pool = self._masked_mean(visual_inv, v_mask)
+            visual_cond = self.visual_inv_to_bn(visual_inv_pool).view(B, N, D)
+            cond_bns["visual"] = base_bn + visual_cond
 
-        return logits
+        # ══════ CROSS-DOMAIN EXCHANGE ══════
+        # Each private attends to OTHER modalities' conditioned bottleneck tokens
+        text_kv = [bn for k, bn in cond_bns.items() if k != "text"]
+        if text_kv:
+            text_priv = self.text_cross_attn(text_priv, torch.cat(text_kv, dim=1))
+
+        if audio_priv is not None:
+            audio_kv = [bn for k, bn in cond_bns.items() if k != "audio"]
+            if audio_kv:
+                audio_priv = self.audio_cross_attn(audio_priv, torch.cat(audio_kv, dim=1))
+
+        if visual_priv is not None:
+            visual_kv = [bn for k, bn in cond_bns.items() if k != "visual"]
+            if visual_kv:
+                visual_priv = self.visual_cross_attn(visual_priv, torch.cat(visual_kv, dim=1))
+
+        # ══════ POOL FOR FUSION ══════
+        text_priv_pool = self._masked_mean(text_priv, text_mask)
+        parts = [text_inv_pool, text_priv_pool]
+
+        audio_priv_pool = None
+        if audio_priv is not None:
+            audio_priv_pool = self._masked_mean(audio_priv, a_mask)
+            parts.extend([audio_inv_pool, audio_priv_pool])
+
+        visual_priv_pool = None
+        if visual_priv is not None:
+            visual_priv_pool = self._masked_mean(visual_priv, v_mask)
+            parts.extend([visual_inv_pool, visual_priv_pool])
+
+        # ══════ FUSION + CLASSIFY ══════
+        fused = torch.cat(parts, dim=-1)  # (B, D*2*num_modalities)
+        logits = self.classifier(self.fusion_head(fused))
+
+        if not return_domains:
+            return logits
+
+        # ══════ DOMAIN DATA FOR LOSSES ══════
+        domain_data = {
+            "text_inv_pool": text_inv_pool,
+            "text_priv_pool": text_priv_pool,
+        }
+        recon_data = {
+            "text_recon": self.text_recon_head(
+                torch.cat([text_inv_pool, text_priv_pool], dim=-1)
+            ),
+            "text_original": self._masked_mean(bert_hidden, text_mask),
+        }
+
+        if audio_inv_pool is not None:
+            domain_data["audio_inv_pool"] = audio_inv_pool
+            domain_data["audio_priv_pool"] = audio_priv_pool
+            recon_data["audio_recon"] = self.audio_recon_head(
+                torch.cat([audio_inv_pool, audio_priv_pool], dim=-1)
+            )
+            recon_data["audio_original"] = self._masked_mean(audio_raw, a_mask)
+
+        if visual_inv_pool is not None:
+            domain_data["visual_inv_pool"] = visual_inv_pool
+            domain_data["visual_priv_pool"] = visual_priv_pool
+            recon_data["visual_recon"] = self.visual_recon_head(
+                torch.cat([visual_inv_pool, visual_priv_pool], dim=-1)
+            )
+            recon_data["visual_original"] = self._masked_mean(visual_raw, v_mask)
+
+        return logits, domain_data, recon_data

@@ -1,52 +1,52 @@
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 
 
-def compute_separation_loss(domain_data: dict, device='cpu') -> torch.Tensor:
-    """Minimize cosine similarity between invariant and private domains."""
+def compute_separation_loss(domain_data, device='cpu'):
+    """Squared cosine similarity between invariant and private (should be ~0 = orthogonal)."""
     losses = []
-    for modality in ['text', 'audio', 'visual']:
-        inv = domain_data.get(f'{modality}_invariant')
-        priv = domain_data.get(f'{modality}_private')
+    for mod in ['text', 'audio', 'visual']:
+        inv = domain_data.get(f'{mod}_inv_pool')
+        priv = domain_data.get(f'{mod}_priv_pool')
         if inv is not None and priv is not None:
-            cos_sim = torch.nn.functional.cosine_similarity(inv, priv, dim=1)
-            losses.append(cos_sim.mean())
+            cos = F.cosine_similarity(inv, priv, dim=-1)
+            losses.append((cos ** 2).mean())
 
-    return torch.stack(losses).mean() if losses else torch.tensor(0.0, device=device)
+    if not losses:
+        return torch.tensor(0.0, device=device)
+    return torch.stack(losses).mean()
 
 
-def compute_invariant_loss(domain_data: dict, labels: torch.Tensor, margin=1.0) -> torch.Tensor:
-    """Pull same-emotion invariant representations, push different-emotion."""
+def compute_invariant_loss(domain_data, labels=None):
+    """Cross-modal invariant alignment: MSE between pooled invariants of different modalities."""
+    inv_pools = []
+    for mod in ['text', 'audio', 'visual']:
+        inv = domain_data.get(f'{mod}_inv_pool')
+        if inv is not None:
+            inv_pools.append(inv)
+
+    if len(inv_pools) < 2:
+        dev = inv_pools[0].device if inv_pools else 'cpu'
+        return torch.tensor(0.0, device=dev)
+
+    loss = torch.tensor(0.0, device=inv_pools[0].device)
+    count = 0
+    for i in range(len(inv_pools)):
+        for j in range(i + 1, len(inv_pools)):
+            loss = loss + F.mse_loss(inv_pools[i], inv_pools[j])
+            count += 1
+    return loss / count
+
+
+def compute_reconstruction_loss(recon_data):
+    """MSE between reconstructed and original pooled features."""
     losses = []
-    for modality in ['text', 'audio', 'visual']:
-        inv = domain_data.get(f'{modality}_invariant')
-        if inv is None:
-            continue
+    for mod in ['text', 'audio', 'visual']:
+        recon = recon_data.get(f'{mod}_recon')
+        orig = recon_data.get(f'{mod}_original')
+        if recon is not None and orig is not None:
+            losses.append(F.mse_loss(recon, orig))
 
-        dists = torch.cdist(inv, inv)
-        same_emotion = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
-        same_emotion.fill_diagonal_(0)
-
-        same_dists = (dists * same_emotion).sum(dim=1) / same_emotion.sum(dim=1).clamp(min=1)
-
-        diff_emotion = 1.0 - same_emotion
-        diff_emotion.fill_diagonal_(0)
-        diff_dists = (dists * diff_emotion).sum(dim=1) / diff_emotion.sum(dim=1).clamp(min=1)
-
-        loss = torch.relu(same_dists - diff_dists + margin).mean()
-        losses.append(loss)
-
-    return torch.stack(losses).mean() if losses else torch.tensor(0.0, device=labels.device)
-
-
-def compute_reconstruction_loss(recon_data: dict) -> torch.Tensor:
-    """Reconstruct original features from [invariant || private]."""
-    losses = []
-    criterion = nn.MSELoss()
-    for modality in ['text', 'audio', 'visual']:
-        recon = recon_data.get(f'{modality}_recon')
-        original = recon_data.get(f'{modality}_original')
-        if recon is not None and original is not None:
-            losses.append(criterion(recon, original))
-
-    return torch.stack(losses).mean() if losses else torch.tensor(0.0)
+    if not losses:
+        return torch.tensor(0.0)
+    return torch.stack(losses).mean()

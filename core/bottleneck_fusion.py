@@ -1,38 +1,10 @@
 import torch
 import torch.nn as nn
-from transformers import BertModel
-
-
-class ConvGRUEncoder(nn.Module):
-    """Conv1D (3 layers) + Bidirectional GRU for temporal sequences."""
-
-    def __init__(self, input_dim, conv_dim=128, gru_hidden=128, dropout=0.1):
-        super().__init__()
-        self.convs = nn.Sequential(
-            nn.Conv1d(input_dim, conv_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Conv1d(conv_dim, conv_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Conv1d(conv_dim, conv_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-        )
-        self.gru = nn.GRU(conv_dim, gru_hidden, batch_first=True, bidirectional=True)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        # x: (B, T, input_dim)
-        x = x.transpose(1, 2)   # (B, input_dim, T)
-        x = self.convs(x)       # (B, conv_dim, T)
-        x = x.transpose(1, 2)   # (B, T, conv_dim)
-        x, _ = self.gru(x)      # (B, T, gru_hidden*2)
-        return self.dropout(x)
+from core.encoders import BertTextEncoder, AudioCNNEncoder, VideoBiLSTMEncoder
 
 
 class DomainEncoder(nn.Module):
-    """2-layer Transformer encoder for domain separation."""
+    """2-layer Transformer encoder for domain separation (invariant / private)."""
 
     def __init__(self, hidden_dim=128, num_layers=2, num_heads=8, ff_dim=256, dropout=0.1):
         super().__init__()
@@ -43,19 +15,17 @@ class DomainEncoder(nn.Module):
         self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
 
     def forward(self, x, padding_mask=None):
-        # padding_mask: True=valid (our convention) → invert for Transformer (True=ignore)
-        mask = ~padding_mask if padding_mask is not None else None
-        return self.encoder(x, src_key_padding_mask=mask)
+        # padding_mask: True=valid → invert for Transformer (True=ignore)
+        src_key_padding_mask = ~padding_mask if padding_mask is not None else None
+        return self.encoder(x, src_key_padding_mask=src_key_padding_mask)
 
 
 class CrossAttentionBlock(nn.Module):
-    """Cross-attention with residual connections, LayerNorm, and feedforward."""
+    """Cross-attention with residual + LayerNorm + feedforward."""
 
     def __init__(self, hidden_dim=128, num_heads=8, dropout=0.1):
         super().__init__()
-        self.attn = nn.MultiheadAttention(
-            hidden_dim, num_heads, dropout=dropout, batch_first=True
-        )
+        self.attn = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.ff = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim * 2),
@@ -74,41 +44,51 @@ class CrossAttentionBlock(nn.Module):
 
 
 class BottleneckFusion(nn.Module):
-    """Domain-Separated Bottleneck Architecture for multimodal emotion recognition.
+    """Domain-Separated Bottleneck Fusion for multimodal emotion recognition.
 
-    Architecture: Encoders → Domain Separation → Bottleneck → Fusion → Classifier
-    Information flow: Invariant → Bottleneck Tokens → Private (cross-domain)
+    Architecture:
+        Text  → BertTextEncoder  → Linear(768→D) → text_seq  (B, T_text, D)
+        Audio → AudioCNNEncoder  → audio_seq  (B, T_audio, D)
+        Video → VideoBiLSTMEncoder → Linear(D*2→D) → visual_seq (B, T_visual, D)
+
+        Each modality → DomainEncoder × 2 → invariant_seq + private_seq
+
+        Bottleneck:
+          1. Within-private: private attends to base bottleneck tokens
+          2. Condition bottleneck with invariant pool
+          3. Cross-domain: each private attends to other modalities' conditioned bottleneck
+          4. Pool invariant + private → per-modality vectors
+          5. Concat all → fusion_head → classifier
+
+    BottleneckFusion does NOT use logits from baseline models.
+    It uses the same encoder blocks (BERT / CNN / BiLSTM) directly on raw features.
     """
 
     def __init__(self, num_classes=6, hidden_dim=128, num_bottleneck_tokens=16,
-                 dropout=0.1, freeze_bert=True, use_audio=True, use_visual=True,
+                 dropout=0.1, freeze_bert="full", use_audio=True, use_visual=True,
                  audio_input_dim=74, visual_input_dim=713):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_bottleneck_tokens = num_bottleneck_tokens
         self.use_audio = use_audio
         self.use_visual = use_visual
+        self.audio_input_dim = audio_input_dim
+        self.visual_input_dim = visual_input_dim
 
-        # ── Text Encoder (BERT → projection) ──
-        self.bert = BertModel.from_pretrained("bert-base-uncased")
-        self._apply_bert_freeze(freeze_bert)
+        # ── Text encoder ──
+        self.text_encoder = BertTextEncoder(freeze_bert=freeze_bert)
         self.text_proj = nn.Linear(768, hidden_dim)
 
-        # ── Audio Encoder (Conv1D + BiGRU → projection) ──
+        # ── Audio encoder (CNN output = hidden_dim, no extra projection) ──
         if use_audio:
-            self.audio_encoder = ConvGRUEncoder(
-                audio_input_dim, conv_dim=hidden_dim, gru_hidden=hidden_dim, dropout=dropout
-            )
-            self.audio_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+            self.audio_encoder = AudioCNNEncoder(audio_input_dim, hidden_dim, dropout)
 
-        # ── Visual Encoder (Conv1D + BiGRU → projection) ──
+        # ── Visual encoder (BiLSTM output = hidden_dim*2, project to hidden_dim) ──
         if use_visual:
-            self.visual_encoder = ConvGRUEncoder(
-                visual_input_dim, conv_dim=hidden_dim, gru_hidden=hidden_dim, dropout=dropout
-            )
+            self.visual_encoder = VideoBiLSTMEncoder(visual_input_dim, hidden_dim, dropout)
             self.visual_proj = nn.Linear(hidden_dim * 2, hidden_dim)
 
-        # ── Domain Separation (2-layer Transformers) ──
+        # ── Domain separation: one invariant + one private encoder per modality ──
         self.text_inv_enc = DomainEncoder(hidden_dim, dropout=dropout)
         self.text_priv_enc = DomainEncoder(hidden_dim, dropout=dropout)
         if use_audio:
@@ -118,33 +98,33 @@ class BottleneckFusion(nn.Module):
             self.visual_inv_enc = DomainEncoder(hidden_dim, dropout=dropout)
             self.visual_priv_enc = DomainEncoder(hidden_dim, dropout=dropout)
 
-        # ── Bottleneck Tokens ──
+        # ── Learnable base bottleneck tokens ──
         self.bottleneck_tokens = nn.Parameter(
             torch.randn(num_bottleneck_tokens, hidden_dim) * 0.02
         )
 
-        # ── Invariant → Bottleneck conditioning ──
+        # ── Invariant pool → condition bottleneck tokens ──
         self.text_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
         if use_audio:
             self.audio_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
         if use_visual:
             self.visual_inv_to_bn = nn.Linear(hidden_dim, num_bottleneck_tokens * hidden_dim)
 
-        # ── Within-private refinement (private attends to base bottleneck) ──
+        # ── Within-private refinement (private → base bottleneck) ──
         self.text_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
         if use_audio:
             self.audio_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
         if use_visual:
             self.visual_within_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
 
-        # ── Cross-domain attention (private attends to other inv-conditioned bottleneck) ──
+        # ── Cross-domain exchange (private → other modalities' conditioned bottleneck) ──
         self.text_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
         if use_audio:
             self.audio_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
         if use_visual:
             self.visual_cross_attn = CrossAttentionBlock(hidden_dim, dropout=dropout)
 
-        # ── Reconstruction Heads: [inv_pool || priv_pool] → original dim ──
+        # ── Reconstruction heads: [inv_pool || priv_pool] → original feature dim ──
         self.text_recon_head = nn.Sequential(
             nn.Linear(hidden_dim * 2, 512), nn.ReLU(), nn.Linear(512, 768),
         )
@@ -157,9 +137,9 @@ class BottleneckFusion(nn.Module):
                 nn.Linear(hidden_dim * 2, 512), nn.ReLU(), nn.Linear(512, visual_input_dim),
             )
 
-        # ── Fusion + Classifier ──
+        # ── Fusion classifier ──
         num_mod = 1 + int(use_audio) + int(use_visual)
-        fusion_dim = hidden_dim * 2 * num_mod
+        fusion_dim = hidden_dim * 2 * num_mod  # [inv_pool || priv_pool] per modality
         self.fusion_head = nn.Sequential(
             nn.Linear(fusion_dim, hidden_dim * 2),
             nn.LayerNorm(hidden_dim * 2),
@@ -172,52 +152,45 @@ class BottleneckFusion(nn.Module):
         )
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
-    def _apply_bert_freeze(self, mode):
-        if mode is True or mode == "full":
-            for p in self.bert.parameters():
-                p.requires_grad = False
-        elif mode == "partial":
-            for p in self.bert.parameters():
-                p.requires_grad = False
-            for layer in self.bert.encoder.layer[-4:]:
-                for p in layer.parameters():
-                    p.requires_grad = True
-
     @staticmethod
     def _masked_mean(seq, mask):
-        """Masked mean pooling: (B, T, D) × (B, T) → (B, D)."""
         if mask is None:
             return seq.mean(dim=1)
         m = mask.unsqueeze(-1).float()
         return (seq * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)
 
-    def forward(self, input_ids, attention_mask, audio=None, visual=None,
-                audio_mask=None, visual_mask=None, return_domains=False):
+    def forward(self, batch, return_domains=False):
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        audio = batch.get("audio")
+        audio_mask = batch.get("audio_mask")
+        visual = batch.get("visual")
+        visual_mask = batch.get("visual_mask")
+
         B = input_ids.size(0)
         N = self.num_bottleneck_tokens
         D = self.hidden_dim
 
-        # ══════ ENCODE (sequence-level, no pooling) ══════
-        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        bert_hidden = bert_out.last_hidden_state             # (B, T_text, 768)
-        text_seq = self.text_proj(bert_hidden)               # (B, T_text, D)
+        # ══ ENCODE (sequence-level, no pooling yet) ══════════════════════════
+        bert_hidden = self.text_encoder(input_ids, attention_mask)  # (B, T_text, 768)
+        text_seq = self.text_proj(bert_hidden)                       # (B, T_text, D)
         text_mask = attention_mask.bool()
 
-        audio_seq, a_mask = None, None
+        audio_seq, a_mask, audio_raw = None, None, None
         if self.use_audio and audio is not None:
             audio_raw = audio
-            audio_seq = self.audio_proj(self.audio_encoder(audio))  # (B, T_a, D)
+            audio_seq = self.audio_encoder(audio)                    # (B, T_a, D)
             a_mask = audio_mask.bool() if audio_mask is not None else None
 
-        visual_seq, v_mask = None, None
+        visual_seq, v_mask, visual_raw = None, None, None
         if self.use_visual and visual is not None:
             visual_raw = visual
             visual_seq = self.visual_proj(self.visual_encoder(visual))  # (B, T_v, D)
             v_mask = visual_mask.bool() if visual_mask is not None else None
 
-        # ══════ DOMAIN SEPARATION (sequence-level) ══════
-        text_inv = self.text_inv_enc(text_seq, text_mask)    # (B, T, D)
-        text_priv = self.text_priv_enc(text_seq, text_mask)  # (B, T, D)
+        # ══ DOMAIN SEPARATION (sequence-level) ═══════════════════════════════
+        text_inv = self.text_inv_enc(text_seq, text_mask)
+        text_priv = self.text_priv_enc(text_seq, text_mask)
 
         audio_inv = audio_priv = None
         if audio_seq is not None:
@@ -229,7 +202,7 @@ class BottleneckFusion(nn.Module):
             visual_inv = self.visual_inv_enc(visual_seq, v_mask)
             visual_priv = self.visual_priv_enc(visual_seq, v_mask)
 
-        # ══════ WITHIN-PRIVATE REFINEMENT ══════
+        # ══ WITHIN-PRIVATE REFINEMENT (private → base bottleneck) ════════════
         base_bn = self.bottleneck_tokens.unsqueeze(0).expand(B, -1, -1)  # (B, N, D)
 
         text_priv = self.text_within_attn(text_priv, base_bn)
@@ -238,27 +211,22 @@ class BottleneckFusion(nn.Module):
         if visual_priv is not None:
             visual_priv = self.visual_within_attn(visual_priv, base_bn)
 
-        # ══════ CONDITION BOTTLENECK WITH INVARIANT ══════
-        text_inv_pool = self._masked_mean(text_inv, text_mask)  # (B, D)
-        text_cond = self.text_inv_to_bn(text_inv_pool).view(B, N, D)
-        text_bn = base_bn + text_cond
-
+        # ══ CONDITION BOTTLENECK WITH INVARIANT POOL ═════════════════════════
+        text_inv_pool = self._masked_mean(text_inv, text_mask)           # (B, D)
+        text_bn = base_bn + self.text_inv_to_bn(text_inv_pool).view(B, N, D)
         cond_bns = {"text": text_bn}
 
         audio_inv_pool = None
         if audio_inv is not None:
             audio_inv_pool = self._masked_mean(audio_inv, a_mask)
-            audio_cond = self.audio_inv_to_bn(audio_inv_pool).view(B, N, D)
-            cond_bns["audio"] = base_bn + audio_cond
+            cond_bns["audio"] = base_bn + self.audio_inv_to_bn(audio_inv_pool).view(B, N, D)
 
         visual_inv_pool = None
         if visual_inv is not None:
             visual_inv_pool = self._masked_mean(visual_inv, v_mask)
-            visual_cond = self.visual_inv_to_bn(visual_inv_pool).view(B, N, D)
-            cond_bns["visual"] = base_bn + visual_cond
+            cond_bns["visual"] = base_bn + self.visual_inv_to_bn(visual_inv_pool).view(B, N, D)
 
-        # ══════ CROSS-DOMAIN EXCHANGE ══════
-        # Each private attends to OTHER modalities' conditioned bottleneck tokens
+        # ══ CROSS-DOMAIN EXCHANGE (private → other modalities' conditioned BN) ══
         text_kv = [bn for k, bn in cond_bns.items() if k != "text"]
         if text_kv:
             text_priv = self.text_cross_attn(text_priv, torch.cat(text_kv, dim=1))
@@ -273,7 +241,7 @@ class BottleneckFusion(nn.Module):
             if visual_kv:
                 visual_priv = self.visual_cross_attn(visual_priv, torch.cat(visual_kv, dim=1))
 
-        # ══════ POOL FOR FUSION ══════
+        # ══ POOL FOR FUSION ═══════════════════════════════════════════════════
         text_priv_pool = self._masked_mean(text_priv, text_mask)
         parts = [text_inv_pool, text_priv_pool]
 
@@ -287,22 +255,20 @@ class BottleneckFusion(nn.Module):
             visual_priv_pool = self._masked_mean(visual_priv, v_mask)
             parts.extend([visual_inv_pool, visual_priv_pool])
 
-        # ══════ FUSION + CLASSIFY ══════
-        fused = torch.cat(parts, dim=-1)  # (B, D*2*num_modalities)
+        # ══ FUSION + CLASSIFY ════════════════════════════════════════════════
+        fused = torch.cat(parts, dim=-1)           # (B, D*2*num_modalities)
         logits = self.classifier(self.fusion_head(fused))
 
         if not return_domains:
             return logits
 
-        # ══════ DOMAIN DATA FOR LOSSES ══════
+        # ══ DOMAIN DATA FOR AUXILIARY LOSSES ═════════════════════════════════
         domain_data = {
             "text_inv_pool": text_inv_pool,
             "text_priv_pool": text_priv_pool,
         }
         recon_data = {
-            "text_recon": self.text_recon_head(
-                torch.cat([text_inv_pool, text_priv_pool], dim=-1)
-            ),
+            "text_recon": self.text_recon_head(torch.cat([text_inv_pool, text_priv_pool], dim=-1)),
             "text_original": self._masked_mean(bert_hidden, text_mask),
         }
 

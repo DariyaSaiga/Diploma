@@ -9,7 +9,6 @@ python training/train.py \
   --epochs 20 \
   --batch_size 32 \
   --lr 1e-3 \
-  --lr_bert 5e-5 \
   --freeze_bert full \
   --num_bottleneck_tokens 16 \
   --patience 5 \

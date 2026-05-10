@@ -70,6 +70,31 @@ print("Negative counts:", neg_counts.astype(int))
 print("POS weights:    ", pos_weight.detach().cpu().numpy().round(3))
 
 # =========================
+# 3.5 FOCAL LOSS
+# =========================
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2.0, pos_weight=None):
+        super().__init__()
+        self.gamma      = gamma
+        self.pos_weight = pos_weight
+
+    def forward(self, logits, targets):
+        # BCE с pos_weight
+        bce = F.binary_cross_entropy_with_logits(
+            logits, targets,
+            pos_weight=self.pos_weight,
+            reduction='none'
+        )
+        # вероятности
+        probs    = torch.sigmoid(logits)
+        # p_t = prob если target=1, (1-prob) если target=0
+        p_t      = probs * targets + (1 - probs) * (1 - targets)
+        # фокусирующий множитель
+        focal_w  = (1 - p_t) ** self.gamma
+
+        return (focal_w * bce).mean()
+
+# =========================
 # 4. BOTTLENECK ATTENTION FUSION
 # =========================
 
@@ -225,7 +250,7 @@ total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {total_params:,}")
 
 # Multi-label loss with positive class weights
-criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+criterion = FocalLoss(gamma=2.0, pos_weight=pos_weight)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
 

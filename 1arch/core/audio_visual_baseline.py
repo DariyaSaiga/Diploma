@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core.encoders import AudioCNNEncoder, VideoBiLSTMEncoder
+from old_arch.core.encoders import AudioCNNEncoder, VideoBiLSTMEncoder
 
 
 class AudioVisualBaseline(nn.Module):

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core.encoders import BertTextEncoder, AudioCNNEncoder, VideoBiLSTMEncoder
+from old_arch.core.encoders import BertTextEncoder, AudioCNNEncoder, VideoBiLSTMEncoder
 
 
 class DomainEncoder(nn.Module):

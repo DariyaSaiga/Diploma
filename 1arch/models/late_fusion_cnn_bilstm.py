@@ -14,7 +14,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from models.common_layers import (
+from old_arch.models.common_layers import (
     AudioCNNEncoder,
     TextBiLSTMEncoder,
     VisionBiLSTMEncoder,

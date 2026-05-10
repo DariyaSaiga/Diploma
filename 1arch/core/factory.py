@@ -1,6 +1,6 @@
-from core.text_only_bert import TextOnlyBERT
-from core.audio_visual_baseline import AudioVisualBaseline
-from core.bottleneck_fusion import BottleneckFusion
+from old_arch.core.text_only_bert import TextOnlyBERT
+from old_arch.core.audio_visual_baseline import AudioVisualBaseline
+from old_arch.core.bottleneck_fusion import BottleneckFusion
 
 
 def build_model(args):

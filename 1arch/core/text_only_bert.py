@@ -1,5 +1,5 @@
 import torch.nn as nn
-from core.encoders import BertTextEncoder
+from old_arch.core.encoders import BertTextEncoder
 
 
 class TextOnlyBERT(nn.Module):

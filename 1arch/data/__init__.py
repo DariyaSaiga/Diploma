@@ -1,4 +1,4 @@
-from data.mosei_multilabel_dataset import (
+from old_arch.data.mosei_multilabel_dataset import (
     MOSEIMultiLabelDataset,
     make_loaders,
     EMOTIONS,

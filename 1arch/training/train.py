@@ -23,20 +23,20 @@ import torch.nn as nn
 # Make `python training/train.py` work too (not only `python -m training.train`).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from data.mosei_multilabel_dataset import EMOTIONS, NUM_CLASSES, make_loaders
-from models import build_model
-from training.losses import (
+from old_arch.data.mosei_multilabel_dataset import EMOTIONS, NUM_CLASSES, make_loaders
+from old_arch.models import build_model
+from old_arch.training.losses import (
     compute_total_loss,
     make_bce_criterion,
     make_pos_weight,
 )
-from training.metrics import (
+from old_arch.training.metrics import (
     EMOTIONS as M_EMOTIONS,
     compute_metrics,
     find_best_thresholds_on_validation,
     format_per_class_report,
 )
-from training.utils import (
+from old_arch.training.utils import (
     AverageMeter,
     append_log,
     count_parameters,

@@ -26,7 +26,7 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from models.common_layers import (
+from old_arch.models.common_layers import (
     BottleneckBlock,
     SelfAttentionEncoder,
     make_mask_from_features,

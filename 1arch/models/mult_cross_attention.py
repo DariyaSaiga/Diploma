@@ -17,7 +17,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from models.common_layers import (
+from old_arch.models.common_layers import (
     CrossAttentionBlock,
     SelfAttentionEncoder,
     make_mask_from_features,

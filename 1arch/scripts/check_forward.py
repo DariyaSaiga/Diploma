@@ -18,20 +18,20 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from data.mosei_multilabel_dataset import (
+from old_arch.data.mosei_multilabel_dataset import (
     AUDIO_DIM,
     NUM_CLASSES,
     SEQ_LEN,
     TEXT_DIM,
     VISION_DIM,
 )
-from models import build_model
-from training.losses import (
+from old_arch.models import build_model
+from old_arch.training.losses import (
     compute_invariant_loss,
     compute_reconstruction_loss,
     compute_separation_loss,
 )
-from training.utils import count_parameters, get_device, set_seed
+from old_arch.training.utils import count_parameters, get_device, set_seed
 
 B = 2
 

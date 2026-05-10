@@ -1,6 +1,6 @@
-from models.late_fusion_cnn_bilstm import LateFusionCNNBiLSTM
-from models.mult_cross_attention import MulTCrossAttention
-from models.bottleneck_fusion import BottleneckFusion
+from old_arch.models.late_fusion_cnn_bilstm import LateFusionCNNBiLSTM
+from old_arch.models.mult_cross_attention import MulTCrossAttention
+from old_arch.models.bottleneck_fusion import BottleneckFusion
 
 MODEL_REGISTRY = {
     "late_fusion": LateFusionCNNBiLSTM,

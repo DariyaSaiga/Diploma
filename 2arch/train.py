@@ -1,4 +1,5 @@
 import pickle
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -228,14 +229,19 @@ criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
 
-NUM_EPOCHS = 30
+NUM_EPOCHS = 50
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=3e-4,
+    max_lr=1e-4,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,
 )
+
+checkpoint_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model.pt"
+if os.path.exists(checkpoint_path):
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    print("✓ Загружена лучшая модель из чекпоинта")
 
 # =========================
 # 6. TRAIN
@@ -301,7 +307,7 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 # 8. TRAIN LOOP w/ Early Stopping
 # =========================
 best_macro_f1 = -1.0
-patience   = 7
+patience = 10
 no_improve = 0
 best_path  = "best_model.pt"
 

@@ -306,7 +306,7 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 # =========================
 # 8. TRAIN LOOP w/ Early Stopping
 # =========================
-best_macro_f1 = -1.0
+best_macro_f1 = 0.4106
 patience = 10
 no_improve = 0
 best_path  = "best_model.pt"

@@ -270,7 +270,7 @@ model = MultimodalEmotionModelBERT(
     num_fusion_layers=2,
     num_classes=6,
     dropout=0.2,
-    bert_finetune_layers=6,
+    bert_finetune_layers=3,
 ).to(device)
 
 # Считаем параметры
@@ -289,15 +289,15 @@ other_params = [p for p in model.parameters() if p.requires_grad and
                 not any(p is bp for bp in bert_params)]
 
 optimizer = torch.optim.AdamW([
-    {'params': bert_params,  'lr': 3e-5},
-    {'params': other_params, 'lr': 1e-4},
+    {'params': bert_params,  'lr': 5e-5},
+    {'params': other_params, 'lr': 5e-5},
 ], weight_decay=1e-2)
 
 NUM_EPOCHS        = 30
 ACCUM_STEPS       = 2   # gradient accumulation: эффективный batch = 16*2 = 32
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=[1e-5, 1e-4],
+    max_lr=[5e-5, 5e-5],
     steps_per_epoch=math.ceil(len(train_loader) / ACCUM_STEPS),
     epochs=NUM_EPOCHS,
     pct_start=0.1,

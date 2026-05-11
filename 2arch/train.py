@@ -274,23 +274,23 @@ class MultimodalEmotionModel(nn.Module):
         t = self.text_sa(self.text_enc(text))  # (B, 50, 128)
         a = self.audio_enc(audio)               # (B, 60, 128)
         v = self.video_enc(video)               # (B, 60, 128)
-    
+
         # SEM: аудио и видео читают из текста
         a_sem, _ = self.audio_sem(query=a, key=t, value=t)
         v_sem, _ = self.video_sem(query=v, key=t, value=t)
         a = self.norm_audio_sem(a + self.sem_drop(a_sem))
         v = self.norm_video_sem(v + self.sem_drop(v_sem))
-    
+
         # unimodal логиты — после SEM
         t_logits = self.text_classifier(t.mean(dim=1))
         a_logits = self.audio_classifier(a.mean(dim=1))
         v_logits = self.video_classifier(v.mean(dim=1))
-    
+
         # bottleneck fusion
         bn = None
         for layer in self.fusion_layers:
             bn, t, a, v = layer(t, a, v, bn)
-    
+
         f_logits = self.classifier(bn.mean(dim=1))
         return f_logits, t_logits, a_logits, v_logits
 
@@ -393,7 +393,7 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 best_macro_f1 = -1.0
 patience, no_improve = 15, 0
 os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
-best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
+best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm_sem.pt.pt"
 
 print(f"\n{'Epoch':<8} {'Loss':>8} {'Acc':>8} {'MacroF1':>10} {'WF1':>8}")
 print("-" * 48)

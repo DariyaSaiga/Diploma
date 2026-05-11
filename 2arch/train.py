@@ -237,12 +237,12 @@ model = MultimodalEmotionModel(
     text_dim=text_dim,
     audio_dim=audio_dim,
     video_dim=video_dim,
-    d_model=256,
-    num_heads=8,
+    d_model=128,
+    num_heads=4,
     num_bottleneck=16,
-    num_fusion_layers=4,
+    num_fusion_layers=2,
     num_classes=6,
-    dropout=0.3,
+    dropout=0.2,
 ).to(device)
 
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -256,7 +256,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
 NUM_EPOCHS = 30
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=3e-4,     
+    max_lr=1e-4,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,

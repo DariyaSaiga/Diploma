@@ -6,13 +6,12 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, classification_report
-from sklearn.utils.class_weight import compute_class_weight
 import math
 
 # =========================
 # 1. LOAD DATA
 # =========================
-with open("datasets/mosei_emotion_aligned_60.pkl", "rb") as f:
+with open("datasets/mosei_combined.pkl", "rb") as f:
     data = pickle.load(f)
 
 train_data = data["train"]
@@ -238,12 +237,12 @@ model = MultimodalEmotionModel(
     text_dim=text_dim,
     audio_dim=audio_dim,
     video_dim=video_dim,
-    d_model=128,
-    num_heads=4,
-    num_bottleneck=4,
-    num_fusion_layers=2,
+    d_model=256,
+    num_heads=8,
+    num_bottleneck=16,
+    num_fusion_layers=4,
     num_classes=6,
-    dropout=0.2,
+    dropout=0.3,
 ).to(device)
 
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -254,19 +253,15 @@ criterion = FocalLoss(gamma=2.0, pos_weight=pos_weight)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 30
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=1e-4,     
+    max_lr=3e-4,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,
 )
 
-checkpoint_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model.pt"
-if os.path.exists(checkpoint_path):
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    print("✓ Загружена лучшая модель из чекпоинта")
 
 # =========================
 # 6. TRAIN
@@ -331,7 +326,7 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 # =========================
 # 8. TRAIN LOOP w/ Early Stopping
 # =========================
-best_macro_f1 = 0.4106
+best_macro_f1 = -1.0
 patience = 10
 no_improve = 0
 best_path  = "best_model.pt"

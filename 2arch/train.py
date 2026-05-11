@@ -11,7 +11,7 @@ import math
 # =========================
 # 1. LOAD DATA
 # =========================
-with open("datasets/mosei_combined.pkl", "rb") as f:
+with open("datasets/mosei_bert_custom.pkl", "rb") as f:
     data = pickle.load(f)
 
 train_data = data["train"]
@@ -118,7 +118,7 @@ class BottleneckAttentionFusion(nn.Module):
     Bottleneck Attention Fusion (BAF).
     Reference: "Attention Bottlenecks for Multimodal Fusion" (NeurIPS 2021)
     """
-    def __init__(self, d_model, num_heads=4, num_bottleneck=4, dropout=0.1):
+    def __init__(self, d_model, num_heads=4, num_bottleneck=16, dropout=0.1):
         super().__init__()
         self.bottleneck = nn.Parameter(torch.randn(1, num_bottleneck, d_model) * 0.02)
 
@@ -145,26 +145,24 @@ class BottleneckAttentionFusion(nn.Module):
 
     def forward(self, t, a, v):
         B  = t.size(0)
-        bn = self.bottleneck.expand(B, -1, -1)
+        if bn is None:
+            bn = self.bottleneck.expand(B, -1, -1)
 
         bt, _ = self.attn_bt(bn, t, t)
         ba, _ = self.attn_ba(bn, a, a)
         bv, _ = self.attn_bv(bn, v, v)
-        b_fused = self.norm_b(bn + self.drop(bt + ba + bv) / 3.0)
+        bn = self.norm_b(bn + self.drop(bt + ba + bv) / 3.0)
 
-        t2, _ = self.attn_t(t, b_fused, b_fused)
-        a2, _ = self.attn_a(a, b_fused, b_fused)
-        v2, _ = self.attn_v(v, b_fused, b_fused)
+        t2, _ = self.attn_t(t, bn, bn)
+        a2, _ = self.attn_a(a, bn, bn)
+        v2, _ = self.attn_v(v, bn, bn)
 
-        t_out = self.norm_t(t + self.drop(t2))
-        a_out = self.norm_a(a + self.drop(a2))
-        v_out = self.norm_v(v + self.drop(v2))
+        t = self.norm_t(t + self.drop(t2))
+        a = self.norm_a(a + self.drop(a2))
+        v = self.norm_v(v + self.drop(v2))
 
-        fused = t_out.mean(1) + a_out.mean(1) + v_out.mean(1)
-        fused = self.norm_out(fused)
-        fused = fused + self.drop(self.ffn(fused))
-        return fused
-
+        bn = self.norm_ffn(bn + self.drop(self.ffn(bn)))
+        return bn, t, a, v
 
 class ModalityEncoder(nn.Module):
     def __init__(self, in_dim, d_model, dropout=0.1):
@@ -179,34 +177,83 @@ class ModalityEncoder(nn.Module):
     def forward(self, x):
         return self.pe(self.proj(x))
 
+# Аудио: 1D-CNN
+# COVAREP = временной ряд акустических признаков
+# CNN извлекает локальные паттерны (изменения pitch, тембра)
+# Обоснование: fnins (Xia et al., 2022)
+class AudioCNNEncoder(nn.Module):
+    def __init__(self, in_dim, d_model, dropout=0.1):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv1d(in_dim, d_model, kernel_size=3, padding=1),
+            nn.BatchNorm1d(d_model),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(d_model, d_model, kernel_size=3, padding=1),
+            nn.BatchNorm1d(d_model),
+            nn.ReLU(),
+        )
+        self.pe = PositionalEncoding(d_model, dropout=dropout)
+
+    def forward(self, x):
+        # x: (B, seq_len, in_dim)
+        x = x.transpose(1, 2)    # → (B, in_dim, seq_len)
+        x = self.conv(x)          # → (B, d_model, seq_len)
+        x = x.transpose(1, 2)    # → (B, seq_len, d_model)
+        return self.pe(x)
+
+
+# Видео: BiLSTM
+# OpenFace = движения лица во времени
+# BiLSTM читает последовательность вперёд и назад
+# Обоснование: fnins (Xia et al., 2022)
+class VideoBiLSTMEncoder(nn.Module):
+    def __init__(self, in_dim, d_model, dropout=0.1):
+        super().__init__()
+        self.proj = nn.Linear(in_dim, d_model)
+        self.bilstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=d_model // 2, 
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+            dropout=dropout
+        )
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        # x: (B, seq_len, in_dim)
+        x = self.proj(x)          # → (B, seq_len, d_model)
+        x, _ = self.bilstm(x)     # → (B, seq_len, d_model)
+        return self.norm(x)
+
 
 class MultimodalEmotionModel(nn.Module):
     def __init__(self, text_dim, audio_dim, video_dim,
-                 d_model=128, num_heads=4, num_bottleneck=4,
+                 d_model=128, num_heads=4, num_bottleneck=16,
                  num_fusion_layers=2, num_classes=6, dropout=0.2):
         super().__init__()
 
-        self.text_enc  = ModalityEncoder(text_dim,  d_model, dropout)
-        self.audio_enc = ModalityEncoder(audio_dim, d_model, dropout)
-        self.video_enc = ModalityEncoder(video_dim, d_model, dropout)
+        # Text: Linear(768→128) → Transformer
+        self.text_enc = ModalityEncoder(text_dim, d_model, dropout)
+        self.text_sa  = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model, num_heads, d_model*4, dropout, batch_first=True),
+            num_layers=2
+        )
 
+        # Audio: 1D-CNN
+        self.audio_enc = AudioCNNEncoder(audio_dim, d_model, dropout)
+
+        # Video: BiLSTM
+        self.video_enc = VideoBiLSTMEncoder(video_dim, d_model, dropout)
+
+        # Bottleneck Fusion
         self.fusion_layers = nn.ModuleList([
             BottleneckAttentionFusion(d_model, num_heads, num_bottleneck, dropout)
             for _ in range(num_fusion_layers)
         ])
 
-        # norm_first=True вызывал warning — убрала, используем стандартный post-norm
-        enc_layer  = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-        enc_layer2 = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-        enc_layer3 = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-
-        self.text_sa  = nn.TransformerEncoder(enc_layer,  num_layers=2)
-        self.audio_sa = nn.TransformerEncoder(enc_layer2, num_layers=2)
-        self.video_sa = nn.TransformerEncoder(enc_layer3, num_layers=2)
-
+        # Classifier на bottleneck токенах
         self.classifier = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.GELU(),
@@ -215,13 +262,17 @@ class MultimodalEmotionModel(nn.Module):
         )
 
     def forward(self, text, audio, video):
-        t = self.text_sa(self.text_enc(text))
-        a = self.audio_sa(self.audio_enc(audio))
-        v = self.video_sa(self.video_enc(video))
+        t = self.text_sa(self.text_enc(text))  # (B, 50, 128)
+        a = self.audio_enc(audio)               # (B, 60, 128)
+        v = self.video_enc(video)               # (B, 60, 128)
 
+        # bottleneck передаётся между слоями
+        bn = None
         for layer in self.fusion_layers:
-            fused = layer(t, a, v)
+            bn, t, a, v = layer(t, a, v, bn)
 
+        # classifier работает с mean pooled bottleneck
+        fused = bn.mean(dim=1)                  # (B, 128)
         return self.classifier(fused)
 
 
@@ -251,9 +302,9 @@ print(f"Trainable parameters: {total_params:,}")
 # Multi-label loss with positive class weights
 criterion = FocalLoss(gamma=2.0, pos_weight=pos_weight)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
-NUM_EPOCHS = 30
+NUM_EPOCHS = 50
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
     max_lr=1e-4,     

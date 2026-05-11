@@ -1,17 +1,17 @@
 import pickle
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, classification_report
-from sklearn.utils.class_weight import compute_class_weight
 import math
 
 # =========================
 # 1. LOAD DATA
 # =========================
-with open("mosei_emotion_aligned_60.pkl", "rb") as f:
+with open("datasets/mosei_bert_custom.pkl", "rb") as f:
     data = pickle.load(f)
 
 train_data = data["train"]
@@ -20,6 +20,8 @@ test_data  = data["test"]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
+
+EMOTION_NAMES = ["Happy", "Sad", "Anger", "Surprise", "Disgust", "Fear"]
 
 # =========================
 # 2. DATASET
@@ -51,30 +53,45 @@ valid_loader = DataLoader(valid_dataset, batch_size=32, shuffle=False, num_worke
 test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False, num_workers=0)
 
 # =========================
-# 3. СМЯГЧЁННЫЕ ВЕСА КЛАССОВ
+# 3. MULTI-LABEL POSITIVE CLASS WEIGHTS
 # =========================
-labels_all = np.array([int(torch.argmax(torch.tensor(y))) for y in train_data["labels"]])
+labels_np = np.array(train_data["labels"], dtype=np.float32)  # (N, 6)
 
-# --- ПРОБЛЕМА БЫЛА ЗДЕСЬ ---
-# compute_class_weight("balanced") давал соотношение 67:1 (класс5 / класс0).
-# Модель полностью игнорировала класс 0 (1307 примеров) и предсказывала только 4 и 5.
-#
-# РЕШЕНИЕ: sqrt-сглаживание весов.
-# Берём корень из balanced весов → соотношение ~8:1 вместо 67:1.
-# Модель теперь учит все классы, но всё ещё уделяет больше внимания редким.
+pos_counts = labels_np.sum(axis=0)
+neg_counts = labels_np.shape[0] - pos_counts
 
-raw_weights = compute_class_weight(
-    class_weight="balanced",
-    classes=np.unique(labels_all),
-    y=labels_all
-)
-dampened_weights = np.sqrt(raw_weights)
-dampened_weights = dampened_weights / dampened_weights.mean()   # нормализация к среднему=1
+pos_weight = neg_counts / (pos_counts + 1e-6)
+pos_weight = np.sqrt(pos_weight)
+pos_weight = torch.tensor(pos_weight, dtype=torch.float32).to(device)
 
-class_weights = torch.tensor(dampened_weights, dtype=torch.float32).to(device)
-print(f"Raw weights:      {raw_weights.round(3)}")
-print(f"Dampened weights: {dampened_weights.round(3)}")
-# Ожидаемый результат примерно: [0.50, 0.96, 1.36, 3.63, 3.02, 4.12]
+print("Positive counts:", pos_counts.astype(int))
+print("Negative counts:", neg_counts.astype(int))
+print("POS weights:    ", pos_weight.detach().cpu().numpy().round(3))
+
+# =========================
+# 3.5 FOCAL LOSS
+# =========================
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2.0, pos_weight=None):
+        super().__init__()
+        self.gamma      = gamma
+        self.pos_weight = pos_weight
+
+    def forward(self, logits, targets):
+        # BCE с pos_weight
+        bce = F.binary_cross_entropy_with_logits(
+            logits, targets,
+            pos_weight=self.pos_weight,
+            reduction='none'
+        )
+        # вероятности
+        probs    = torch.sigmoid(logits)
+        # p_t = prob если target=1, (1-prob) если target=0
+        p_t      = probs * targets + (1 - probs) * (1 - targets)
+        # фокусирующий множитель
+        focal_w  = (1 - p_t) ** self.gamma
+
+        return (focal_w * bce).mean()
 
 # =========================
 # 4. BOTTLENECK ATTENTION FUSION
@@ -101,7 +118,7 @@ class BottleneckAttentionFusion(nn.Module):
     Bottleneck Attention Fusion (BAF).
     Reference: "Attention Bottlenecks for Multimodal Fusion" (NeurIPS 2021)
     """
-    def __init__(self, d_model, num_heads=4, num_bottleneck=4, dropout=0.1):
+    def __init__(self, d_model, num_heads=4, num_bottleneck=16, dropout=0.1):
         super().__init__()
         self.bottleneck = nn.Parameter(torch.randn(1, num_bottleneck, d_model) * 0.02)
 
@@ -123,31 +140,29 @@ class BottleneckAttentionFusion(nn.Module):
         self.norm_a   = nn.LayerNorm(d_model)
         self.norm_v   = nn.LayerNorm(d_model)
         self.norm_b   = nn.LayerNorm(d_model)
-        self.norm_out = nn.LayerNorm(d_model)
+        self.norm_ffn = nn.LayerNorm(d_model)
         self.drop     = nn.Dropout(dropout)
 
-    def forward(self, t, a, v):
+    def forward(self, t, a, v, bn=None):
         B  = t.size(0)
-        bn = self.bottleneck.expand(B, -1, -1)
+        if bn is None:
+            bn = self.bottleneck.expand(B, -1, -1)
 
         bt, _ = self.attn_bt(bn, t, t)
         ba, _ = self.attn_ba(bn, a, a)
         bv, _ = self.attn_bv(bn, v, v)
-        b_fused = self.norm_b(bn + self.drop(bt + ba + bv) / 3.0)
+        bn = self.norm_b(bn + self.drop(bt + ba + bv) / 3.0)
 
-        t2, _ = self.attn_t(t, b_fused, b_fused)
-        a2, _ = self.attn_a(a, b_fused, b_fused)
-        v2, _ = self.attn_v(v, b_fused, b_fused)
+        t2, _ = self.attn_t(t, bn, bn)
+        a2, _ = self.attn_a(a, bn, bn)
+        v2, _ = self.attn_v(v, bn, bn)
 
-        t_out = self.norm_t(t + self.drop(t2))
-        a_out = self.norm_a(a + self.drop(a2))
-        v_out = self.norm_v(v + self.drop(v2))
+        t = self.norm_t(t + self.drop(t2))
+        a = self.norm_a(a + self.drop(a2))
+        v = self.norm_v(v + self.drop(v2))
 
-        fused = t_out.mean(1) + a_out.mean(1) + v_out.mean(1)
-        fused = self.norm_out(fused)
-        fused = fused + self.drop(self.ffn(fused))
-        return fused
-
+        bn = self.norm_ffn(bn + self.drop(self.ffn(bn)))
+        return bn, t, a, v
 
 class ModalityEncoder(nn.Module):
     def __init__(self, in_dim, d_model, dropout=0.1):
@@ -162,34 +177,83 @@ class ModalityEncoder(nn.Module):
     def forward(self, x):
         return self.pe(self.proj(x))
 
+# Аудио: 1D-CNN
+# COVAREP = временной ряд акустических признаков
+# CNN извлекает локальные паттерны (изменения pitch, тембра)
+# Обоснование: fnins (Xia et al., 2022)
+class AudioCNNEncoder(nn.Module):
+    def __init__(self, in_dim, d_model, dropout=0.1):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv1d(in_dim, d_model, kernel_size=3, padding=1),
+            nn.BatchNorm1d(d_model),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(d_model, d_model, kernel_size=3, padding=1),
+            nn.BatchNorm1d(d_model),
+            nn.ReLU(),
+        )
+        self.pe = PositionalEncoding(d_model, dropout=dropout)
+
+    def forward(self, x):
+        # x: (B, seq_len, in_dim)
+        x = x.transpose(1, 2)    # → (B, in_dim, seq_len)
+        x = self.conv(x)          # → (B, d_model, seq_len)
+        x = x.transpose(1, 2)    # → (B, seq_len, d_model)
+        return self.pe(x)
+
+
+# Видео: BiLSTM
+# OpenFace = движения лица во времени
+# BiLSTM читает последовательность вперёд и назад
+# Обоснование: fnins (Xia et al., 2022)
+class VideoBiLSTMEncoder(nn.Module):
+    def __init__(self, in_dim, d_model, dropout=0.1):
+        super().__init__()
+        self.proj = nn.Linear(in_dim, d_model)
+        self.bilstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=d_model // 2, 
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+            dropout=dropout
+        )
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        # x: (B, seq_len, in_dim)
+        x = self.proj(x)          # → (B, seq_len, d_model)
+        x, _ = self.bilstm(x)     # → (B, seq_len, d_model)
+        return self.norm(x)
+
 
 class MultimodalEmotionModel(nn.Module):
     def __init__(self, text_dim, audio_dim, video_dim,
-                 d_model=128, num_heads=4, num_bottleneck=4,
+                 d_model=128, num_heads=4, num_bottleneck=16,
                  num_fusion_layers=2, num_classes=6, dropout=0.2):
         super().__init__()
 
-        self.text_enc  = ModalityEncoder(text_dim,  d_model, dropout)
-        self.audio_enc = ModalityEncoder(audio_dim, d_model, dropout)
-        self.video_enc = ModalityEncoder(video_dim, d_model, dropout)
+        # Text: Linear(768→128) → Transformer
+        self.text_enc = ModalityEncoder(text_dim, d_model, dropout)
+        self.text_sa  = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model, num_heads, d_model*4, dropout, batch_first=True),
+            num_layers=2
+        )
 
+        # Audio: 1D-CNN
+        self.audio_enc = AudioCNNEncoder(audio_dim, d_model, dropout)
+
+        # Video: BiLSTM
+        self.video_enc = VideoBiLSTMEncoder(video_dim, d_model, dropout)
+
+        # Bottleneck Fusion
         self.fusion_layers = nn.ModuleList([
             BottleneckAttentionFusion(d_model, num_heads, num_bottleneck, dropout)
             for _ in range(num_fusion_layers)
         ])
 
-        # norm_first=True вызывал warning — убрала, используем стандартный post-norm
-        enc_layer  = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-        enc_layer2 = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-        enc_layer3 = nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model*4,
-                                                dropout=dropout, batch_first=True)
-
-        self.text_sa  = nn.TransformerEncoder(enc_layer,  num_layers=2)
-        self.audio_sa = nn.TransformerEncoder(enc_layer2, num_layers=2)
-        self.video_sa = nn.TransformerEncoder(enc_layer3, num_layers=2)
-
+        # Classifier на bottleneck токенах
         self.classifier = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.GELU(),
@@ -198,13 +262,17 @@ class MultimodalEmotionModel(nn.Module):
         )
 
     def forward(self, text, audio, video):
-        t = self.text_sa(self.text_enc(text))
-        a = self.audio_sa(self.audio_enc(audio))
-        v = self.video_sa(self.video_enc(video))
+        t = self.text_sa(self.text_enc(text))  # (B, 50, 128)
+        a = self.audio_enc(audio)               # (B, 60, 128)
+        v = self.video_enc(video)               # (B, 60, 128)
 
+        # bottleneck передаётся между слоями
+        bn = None
         for layer in self.fusion_layers:
-            fused = layer(t, a, v)
+            bn, t, a, v = layer(t, a, v, bn)
 
+        # classifier работает с mean pooled bottleneck
+        fused = bn.mean(dim=1)                  # (B, 128)
         return self.classifier(fused)
 
 
@@ -222,28 +290,34 @@ model = MultimodalEmotionModel(
     video_dim=video_dim,
     d_model=128,
     num_heads=4,
-    num_bottleneck=4,
+    num_bottleneck=16,
     num_fusion_layers=2,
     num_classes=6,
     dropout=0.2,
 ).to(device)
 
+checkpoint_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
+if os.path.exists(checkpoint_path):
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    print("✓ Загружена модель из чекпоинта")
+
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {total_params:,}")
 
-# Смягчённые веса + label_smoothing для дополнительной помощи редким классам
-criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+# Multi-label loss with positive class weights
+criterion = FocalLoss(gamma=2.0, pos_weight=pos_weight)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
-NUM_EPOCHS = 30
+NUM_EPOCHS = 50
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=3e-4,
+    max_lr=3e-5,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,
 )
+
 
 # =========================
 # 6. TRAIN
@@ -256,7 +330,7 @@ def train_epoch():
         text   = text.to(device)
         audio  = audio.to(device)
         video  = video.to(device)
-        labels = torch.argmax(labels.to(device), dim=1).long()
+        labels = labels.to(device).float()
 
         optimizer.zero_grad()
         out  = model(text, audio, video)
@@ -274,7 +348,7 @@ def train_epoch():
 # =========================
 # 7. EVALUATE
 # =========================
-def evaluate(loader, split_name="Valid"):
+def evaluate(loader, split_name="Valid", threshold=0.5):
     model.eval()
     preds, true = [], []
 
@@ -283,46 +357,55 @@ def evaluate(loader, split_name="Valid"):
             text   = text.to(device)
             audio  = audio.to(device)
             video  = video.to(device)
-            labels = torch.argmax(labels.to(device), dim=1)
+            labels = labels.to(device).float()
 
-            out = model(text, audio, video)
-            p   = torch.argmax(out, dim=1)
+            out   = model(text, audio, video)
+            probs = torch.sigmoid(out)
+            p     = (probs >= threshold).int()
 
-            preds.extend(p.cpu().numpy())
-            true.extend(labels.cpu().numpy())
+            preds.append(p.cpu().numpy())
+            true.append(labels.cpu().numpy())
 
-    print(f"\n[{split_name}] Classification Report:")
-    print(classification_report(true, preds, zero_division=0))
+    preds = np.vstack(preds)          
+    true  = np.vstack(true).astype(int)  
+
+    if split_name == "Test":
+        print(f"\n[{split_name}] Multi-label Classification Report:")
+        print(classification_report(true, preds, zero_division=0, target_names=EMOTION_NAMES))
 
     acc      = accuracy_score(true, preds)
-    f1       = f1_score(true, preds, average="weighted")
-    macro_f1 = f1_score(true, preds, average="macro")
-    return acc, f1, macro_f1
+    f1       = f1_score(true, preds, average="weighted", zero_division=0)
+    macro_f1 = f1_score(true, preds, average="macro",    zero_division=0)
+    micro_f1 = f1_score(true, preds, average="micro",    zero_division=0)  
+
+    return acc, f1, macro_f1, micro_f1
 
 # =========================
 # 8. TRAIN LOOP w/ Early Stopping
 # =========================
-best_f1    = 0.0
-patience   = 7
+best_macro_f1 = 0.3946
+patience = 15
 no_improve = 0
-best_path  = "best_model.pt"
+os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
+best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
 
 for epoch in range(1, NUM_EPOCHS + 1):
     loss = train_epoch()
-    acc, f1, macro_f1 = evaluate(valid_loader, "Valid")
+    acc, weighted_f1, macro_f1, micro_f1 = evaluate(valid_loader, "Valid")
 
     current_lr = scheduler.get_last_lr()[0]
     print(f"\nEpoch {epoch:02d}/{NUM_EPOCHS}  |  Loss: {loss:.4f}  |  LR: {current_lr:.2e}")
-    print(f"  Accuracy:  {acc:.4f}")
-    print(f"  W-F1:      {f1:.4f}")
-    print(f"  Macro-F1:  {macro_f1:.4f}")
+    print(f"  Subset Accuracy: {acc:.4f}")
+    print(f"  Weighted-F1:     {weighted_f1:.4f}") 
+    print(f"  Macro-F1:        {macro_f1:.4f}")
+    print(f"  Micro-F1:        {micro_f1:.4f}")
     print("-" * 60)
 
-    if f1 > best_f1:
-        best_f1    = f1
+    if macro_f1 > best_macro_f1:
+        best_macro_f1 = macro_f1
         no_improve = 0
         torch.save(model.state_dict(), best_path)
-        print(f"  ✓ New best W-F1 = {best_f1:.4f} — model saved.")
+        print(f"  ✓ New best Macro-F1 = {best_macro_f1:.4f} — model saved.")
     else:
         no_improve += 1
         if no_improve >= patience:
@@ -336,7 +419,81 @@ print("\n" + "="*60)
 print("FINAL TEST EVALUATION (best checkpoint)")
 print("="*60)
 model.load_state_dict(torch.load(best_path, map_location=device))
-test_acc, test_f1, test_macro = evaluate(test_loader, "Test")
-print(f"Test Accuracy : {test_acc:.4f}")
-print(f"Test W-F1     : {test_f1:.4f}")
-print(f"Test Macro-F1 : {test_macro:.4f}")
+test_acc, test_weighted_f1, test_macro_f1, test_micro_f1 = evaluate(test_loader, "Test")
+print(f"Test Subset Accuracy : {test_acc:.4f}")
+print(f"Test Weighted-F1     : {test_weighted_f1:.4f}")
+print(f"Test Macro-F1        : {test_macro_f1:.4f}")
+print(f"Test Micro-F1        : {test_micro_f1:.4f}")
+
+metrics_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/metrics_bert_cnn_bilstm.txt"
+with open(metrics_path, "w") as f:
+    f.write(f"Test Subset Accuracy: {test_acc:.4f}\n")
+    f.write(f"Test Weighted-F1:     {test_weighted_f1:.4f}\n")
+    f.write(f"Test Macro-F1:        {test_macro_f1:.4f}\n")
+    f.write(f"Test Micro-F1:        {test_micro_f1:.4f}\n")
+print(f"Metrics saved: {metrics_path}")
+
+
+# =========================
+# 10. PER-CLASS THRESHOLD TUNING
+# =========================
+print("\n" + "="*60)
+print("PER-CLASS THRESHOLD TUNING")
+print("="*60)
+
+model.eval()
+all_probs, all_labels = [], []
+
+with torch.no_grad():
+    for text, audio, video, labels in valid_loader:
+        text, audio, video = text.to(device), audio.to(device), video.to(device)
+        probs = torch.sigmoid(model(text, audio, video))
+        all_probs.append(probs.cpu().numpy())
+        all_labels.append(labels.numpy())
+
+all_probs  = np.vstack(all_probs)
+all_labels = np.vstack(all_labels).astype(int)
+
+# Подбираем оптимальный порог для каждой эмоции
+thresholds = np.arange(0.1, 0.7, 0.05)
+best_thresholds = []
+
+print("\nОптимальные пороги по Validation set:")
+for i, name in enumerate(EMOTION_NAMES):
+    best_t, best_f1 = 0.5, 0.0
+    for t in thresholds:
+        preds = (all_probs[:, i] >= t).astype(int)
+        f1 = f1_score(all_labels[:, i], preds, zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_t  = t
+    best_thresholds.append(best_t)
+    print(f"  {name:<10}: threshold={best_t:.2f}  val_F1={best_f1:.4f}")
+
+# Применяем на test set
+print("\n=== TEST С PER-CLASS ПОРОГАМИ ===")
+all_preds, all_true = [], []
+
+with torch.no_grad():
+    for text, audio, video, labels in test_loader:
+        text, audio, video = text.to(device), audio.to(device), video.to(device)
+        probs = torch.sigmoid(model(text, audio, video)).cpu().numpy()
+        preds = np.zeros_like(probs, dtype=int)
+        for i, t in enumerate(best_thresholds):
+            preds[:, i] = (probs[:, i] >= t).astype(int)
+        all_preds.append(preds)
+        all_true.append(labels.numpy())
+
+all_preds = np.vstack(all_preds)
+all_true  = np.vstack(all_true).astype(int)
+
+print(classification_report(all_true, all_preds, target_names=EMOTION_NAMES, zero_division=0))
+print(f"Macro-F1:    {f1_score(all_true, all_preds, average='macro',    zero_division=0):.4f}")
+print(f"Weighted-F1: {f1_score(all_true, all_preds, average='weighted', zero_division=0):.4f}")
+
+# Сохраняем пороги
+thresholds_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_thresholds.txt"
+with open(thresholds_path, "w") as f:
+    for name, t in zip(EMOTION_NAMES, best_thresholds):
+        f.write(f"{name}: {t:.2f}\n")
+print(f"\nПороги сохранены: {thresholds_path}")

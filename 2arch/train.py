@@ -140,10 +140,10 @@ class BottleneckAttentionFusion(nn.Module):
         self.norm_a   = nn.LayerNorm(d_model)
         self.norm_v   = nn.LayerNorm(d_model)
         self.norm_b   = nn.LayerNorm(d_model)
-        self.norm_out = nn.LayerNorm(d_model)
+        self.norm_ffn = nn.LayerNorm(d_model)
         self.drop     = nn.Dropout(dropout)
 
-    def forward(self, t, a, v):
+    def forward(self, t, a, v, bn=None):
         B  = t.size(0)
         if bn is None:
             bn = self.bottleneck.expand(B, -1, -1)
@@ -364,8 +364,9 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
     preds = np.vstack(preds)          
     true  = np.vstack(true).astype(int)  
 
-    print(f"\n[{split_name}] Multi-label Classification Report:")
-    print(classification_report(true, preds, zero_division=0, target_names=EMOTION_NAMES))
+    if split_name == "Test":
+        print(f"\n[{split_name}] Multi-label Classification Report:")
+        print(classification_report(true, preds, zero_division=0, target_names=EMOTION_NAMES))
 
     acc      = accuracy_score(true, preds)
     f1       = f1_score(true, preds, average="weighted", zero_division=0)
@@ -380,7 +381,8 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 best_macro_f1 = -1.0
 patience = 10
 no_improve = 0
-best_path  = "best_model.pt"
+os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
+best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
 
 for epoch in range(1, NUM_EPOCHS + 1):
     loss = train_epoch()
@@ -417,3 +419,11 @@ print(f"Test Subset Accuracy : {test_acc:.4f}")
 print(f"Test Weighted-F1     : {test_weighted_f1:.4f}")
 print(f"Test Macro-F1        : {test_macro_f1:.4f}")
 print(f"Test Micro-F1        : {test_micro_f1:.4f}")
+
+metrics_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/metrics_bert_cnn_bilstm.txt"
+with open(metrics_path, "w") as f:
+    f.write(f"Test Subset Accuracy: {test_acc:.4f}\n")
+    f.write(f"Test Weighted-F1:     {test_weighted_f1:.4f}\n")
+    f.write(f"Test Macro-F1:        {test_macro_f1:.4f}\n")
+    f.write(f"Test Micro-F1:        {test_micro_f1:.4f}\n")
+print(f"Metrics saved: {metrics_path}")

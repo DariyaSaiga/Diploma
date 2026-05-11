@@ -432,3 +432,68 @@ with open(metrics_path, "w") as f:
     f.write(f"Test Macro-F1:        {test_macro_f1:.4f}\n")
     f.write(f"Test Micro-F1:        {test_micro_f1:.4f}\n")
 print(f"Metrics saved: {metrics_path}")
+
+
+# =========================
+# 10. PER-CLASS THRESHOLD TUNING
+# =========================
+print("\n" + "="*60)
+print("PER-CLASS THRESHOLD TUNING")
+print("="*60)
+
+model.eval()
+all_probs, all_labels = [], []
+
+with torch.no_grad():
+    for text, audio, video, labels in valid_loader:
+        text, audio, video = text.to(device), audio.to(device), video.to(device)
+        probs = torch.sigmoid(model(text, audio, video))
+        all_probs.append(probs.cpu().numpy())
+        all_labels.append(labels.numpy())
+
+all_probs  = np.vstack(all_probs)
+all_labels = np.vstack(all_labels).astype(int)
+
+# Подбираем оптимальный порог для каждой эмоции
+thresholds = np.arange(0.1, 0.7, 0.05)
+best_thresholds = []
+
+print("\nОптимальные пороги по Validation set:")
+for i, name in enumerate(EMOTION_NAMES):
+    best_t, best_f1 = 0.5, 0.0
+    for t in thresholds:
+        preds = (all_probs[:, i] >= t).astype(int)
+        f1 = f1_score(all_labels[:, i], preds, zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_t  = t
+    best_thresholds.append(best_t)
+    print(f"  {name:<10}: threshold={best_t:.2f}  val_F1={best_f1:.4f}")
+
+# Применяем на test set
+print("\n=== TEST С PER-CLASS ПОРОГАМИ ===")
+all_preds, all_true = [], []
+
+with torch.no_grad():
+    for text, audio, video, labels in test_loader:
+        text, audio, video = text.to(device), audio.to(device), video.to(device)
+        probs = torch.sigmoid(model(text, audio, video)).cpu().numpy()
+        preds = np.zeros_like(probs, dtype=int)
+        for i, t in enumerate(best_thresholds):
+            preds[:, i] = (probs[:, i] >= t).astype(int)
+        all_preds.append(preds)
+        all_true.append(labels.numpy())
+
+all_preds = np.vstack(all_preds)
+all_true  = np.vstack(all_true).astype(int)
+
+print(classification_report(all_true, all_preds, target_names=EMOTION_NAMES, zero_division=0))
+print(f"Macro-F1:    {f1_score(all_true, all_preds, average='macro',    zero_division=0):.4f}")
+print(f"Weighted-F1: {f1_score(all_true, all_preds, average='weighted', zero_division=0):.4f}")
+
+# Сохраняем пороги
+thresholds_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_thresholds.txt"
+with open(thresholds_path, "w") as f:
+    for name, t in zip(EMOTION_NAMES, best_thresholds):
+        f.write(f"{name}: {t:.2f}\n")
+print(f"\nПороги сохранены: {thresholds_path}")

@@ -247,6 +247,12 @@ class MultimodalEmotionModel(nn.Module):
         # Video: BiLSTM
         self.video_enc = VideoBiLSTMEncoder(video_dim, d_model, dropout)
 
+        self.audio_sem      = nn.MultiheadAttention(d_model, num_heads, dropout=dropout, batch_first=True)
+        self.video_sem      = nn.MultiheadAttention(d_model, num_heads, dropout=dropout, batch_first=True)
+        self.norm_audio_sem = nn.LayerNorm(d_model)
+        self.norm_video_sem = nn.LayerNorm(d_model)
+        self.sem_drop       = nn.Dropout(dropout)
+
         # Bottleneck Fusion
         self.fusion_layers = nn.ModuleList([
             BottleneckAttentionFusion(d_model, num_heads, num_bottleneck, dropout)
@@ -268,20 +274,24 @@ class MultimodalEmotionModel(nn.Module):
         t = self.text_sa(self.text_enc(text))  # (B, 50, 128)
         a = self.audio_enc(audio)               # (B, 60, 128)
         v = self.video_enc(video)               # (B, 60, 128)
-
-        # unimodal логиты — до fusion
-        t_logits = self.text_classifier(t.mean(dim=1))   # (B, 6)
-        a_logits = self.audio_classifier(a.mean(dim=1))  # (B, 6)
-        v_logits = self.video_classifier(v.mean(dim=1))  # (B, 6)
-
+    
+        # SEM: аудио и видео читают из текста
+        a_sem, _ = self.audio_sem(query=a, key=t, value=t)
+        v_sem, _ = self.video_sem(query=v, key=t, value=t)
+        a = self.norm_audio_sem(a + self.sem_drop(a_sem))
+        v = self.norm_video_sem(v + self.sem_drop(v_sem))
+    
+        # unimodal логиты — после SEM
+        t_logits = self.text_classifier(t.mean(dim=1))
+        a_logits = self.audio_classifier(a.mean(dim=1))
+        v_logits = self.video_classifier(v.mean(dim=1))
+    
         # bottleneck fusion
         bn = None
         for layer in self.fusion_layers:
             bn, t, a, v = layer(t, a, v, bn)
-
-        # fusion логиты
-        f_logits = self.classifier(bn.mean(dim=1))       # (B, 6)
-
+    
+        f_logits = self.classifier(bn.mean(dim=1))
         return f_logits, t_logits, a_logits, v_logits
 
 

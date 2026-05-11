@@ -338,10 +338,11 @@ def train_epoch():
 
         optimizer.zero_grad()
         f_logits, t_logits, a_logits, v_logits = model(text, audio, video)
-        loss = (criterion(f_logits, labels)
-              + 0.3 * criterion(t_logits, labels)
-              + 0.2 * criterion(a_logits, labels)
-              + 0.2 * criterion(v_logits, labels))
+        loss_f = criterion(f_logits, labels)
+        loss_t = criterion(t_logits, labels)
+        loss_a = criterion(a_logits, labels)
+        loss_v = criterion(v_logits, labels)
+        loss = (loss_f + 0.3*loss_t + 0.2*loss_a + 0.2*loss_v) / 1.7
 
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

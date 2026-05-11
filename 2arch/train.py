@@ -260,20 +260,29 @@ class MultimodalEmotionModel(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(d_model, num_classes),
         )
+        self.text_classifier  = nn.Linear(d_model, num_classes)
+        self.audio_classifier = nn.Linear(d_model, num_classes)
+        self.video_classifier = nn.Linear(d_model, num_classes)
 
     def forward(self, text, audio, video):
         t = self.text_sa(self.text_enc(text))  # (B, 50, 128)
         a = self.audio_enc(audio)               # (B, 60, 128)
         v = self.video_enc(video)               # (B, 60, 128)
 
-        # bottleneck передаётся между слоями
+        # unimodal логиты — до fusion
+        t_logits = self.text_classifier(t.mean(dim=1))   # (B, 6)
+        a_logits = self.audio_classifier(a.mean(dim=1))  # (B, 6)
+        v_logits = self.video_classifier(v.mean(dim=1))  # (B, 6)
+
+        # bottleneck fusion
         bn = None
         for layer in self.fusion_layers:
             bn, t, a, v = layer(t, a, v, bn)
 
-        # classifier работает с mean pooled bottleneck
-        fused = bn.mean(dim=1)                  # (B, 128)
-        return self.classifier(fused)
+        # fusion логиты
+        f_logits = self.classifier(bn.mean(dim=1))       # (B, 6)
+
+        return f_logits, t_logits, a_logits, v_logits
 
 
 # =========================
@@ -296,11 +305,6 @@ model = MultimodalEmotionModel(
     dropout=0.2,
 ).to(device)
 
-checkpoint_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
-if os.path.exists(checkpoint_path):
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    print("✓ Загружена модель из чекпоинта")
-
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {total_params:,}")
 
@@ -312,7 +316,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 NUM_EPOCHS = 50
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=3e-5,     
+    max_lr=1e-4,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,
@@ -333,8 +337,11 @@ def train_epoch():
         labels = labels.to(device).float()
 
         optimizer.zero_grad()
-        out  = model(text, audio, video)
-        loss = criterion(out, labels)
+        f_logits, t_logits, a_logits, v_logits = model(text, audio, video)
+        loss = (criterion(f_logits, labels)
+              + 0.3 * criterion(t_logits, labels)
+              + 0.2 * criterion(a_logits, labels)
+              + 0.2 * criterion(v_logits, labels))
 
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -344,7 +351,6 @@ def train_epoch():
         losses.append(loss.item())
 
     return np.mean(losses)
-
 # =========================
 # 7. EVALUATE
 # =========================
@@ -354,146 +360,122 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 
     with torch.no_grad():
         for text, audio, video, labels in loader:
-            text   = text.to(device)
-            audio  = audio.to(device)
-            video  = video.to(device)
-            labels = labels.to(device).float()
+            text, audio, video = text.to(device), audio.to(device), video.to(device)
+            f_logits, _, _, _ = model(text, audio, video)
+            probs = torch.sigmoid(f_logits)
+            preds.append((probs >= threshold).int().cpu().numpy())
+            true.append(labels.numpy())
 
-            out   = model(text, audio, video)
-            probs = torch.sigmoid(out)
-            p     = (probs >= threshold).int()
+    preds = np.vstack(preds)
+    true  = np.vstack(true).astype(int)
 
-            preds.append(p.cpu().numpy())
-            true.append(labels.cpu().numpy())
-
-    preds = np.vstack(preds)          
-    true  = np.vstack(true).astype(int)  
-
-    if split_name == "Test":
-        print(f"\n[{split_name}] Multi-label Classification Report:")
-        print(classification_report(true, preds, zero_division=0, target_names=EMOTION_NAMES))
-
-    acc      = accuracy_score(true, preds)
-    f1       = f1_score(true, preds, average="weighted", zero_division=0)
     macro_f1 = f1_score(true, preds, average="macro",    zero_division=0)
-    micro_f1 = f1_score(true, preds, average="micro",    zero_division=0)  
+    wf1      = f1_score(true, preds, average="weighted", zero_division=0)
+    per_acc  = [accuracy_score(true[:, i], preds[:, i]) for i in range(6)]
 
-    return acc, f1, macro_f1, micro_f1
+    return macro_f1, wf1, np.mean(per_acc), per_acc, preds, true
+
 
 # =========================
-# 8. TRAIN LOOP w/ Early Stopping
+# 8. TRAIN LOOP
 # =========================
-best_macro_f1 = 0.3946
-patience = 15
-no_improve = 0
+best_macro_f1 = -1.0
+patience, no_improve = 15, 0
 os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
 best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
 
+print(f"\n{'Epoch':<8} {'Loss':>8} {'Acc':>8} {'MacroF1':>10} {'WF1':>8}")
+print("-" * 48)
+
 for epoch in range(1, NUM_EPOCHS + 1):
     loss = train_epoch()
-    acc, weighted_f1, macro_f1, micro_f1 = evaluate(valid_loader, "Valid")
+    macro_f1, wf1, acc, _, _, _ = evaluate(valid_loader)
 
-    current_lr = scheduler.get_last_lr()[0]
-    print(f"\nEpoch {epoch:02d}/{NUM_EPOCHS}  |  Loss: {loss:.4f}  |  LR: {current_lr:.2e}")
-    print(f"  Subset Accuracy: {acc:.4f}")
-    print(f"  Weighted-F1:     {weighted_f1:.4f}") 
-    print(f"  Macro-F1:        {macro_f1:.4f}")
-    print(f"  Micro-F1:        {micro_f1:.4f}")
-    print("-" * 60)
+    print(f"{epoch:02d}/{NUM_EPOCHS}  {loss:>8.4f}  {acc*100:>7.1f}%  {macro_f1*100:>9.1f}%  {wf1*100:>7.1f}%")
 
     if macro_f1 > best_macro_f1:
         best_macro_f1 = macro_f1
         no_improve = 0
         torch.save(model.state_dict(), best_path)
-        print(f"  ✓ New best Macro-F1 = {best_macro_f1:.4f} — model saved.")
+        print(f"  ✓ Best Macro-F1 = {best_macro_f1*100:.1f}%")
     else:
         no_improve += 1
         if no_improve >= patience:
-            print(f"  Early stopping at epoch {epoch} (no improvement for {patience} epochs).")
+            print(f"  Early stopping at epoch {epoch}.")
             break
 
+
 # =========================
-# 9. FINAL TEST EVALUATION
+# 9. ФИНАЛЬНЫЙ ТЕСТ
 # =========================
-print("\n" + "="*60)
-print("FINAL TEST EVALUATION (best checkpoint)")
-print("="*60)
 model.load_state_dict(torch.load(best_path, map_location=device))
-test_acc, test_weighted_f1, test_macro_f1, test_micro_f1 = evaluate(test_loader, "Test")
-print(f"Test Subset Accuracy : {test_acc:.4f}")
-print(f"Test Weighted-F1     : {test_weighted_f1:.4f}")
-print(f"Test Macro-F1        : {test_macro_f1:.4f}")
-print(f"Test Micro-F1        : {test_micro_f1:.4f}")
+macro_f1, wf1, avg_acc, per_acc, preds, true = evaluate(test_loader, "Test")
 
-metrics_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/metrics_bert_cnn_bilstm.txt"
-with open(metrics_path, "w") as f:
-    f.write(f"Test Subset Accuracy: {test_acc:.4f}\n")
-    f.write(f"Test Weighted-F1:     {test_weighted_f1:.4f}\n")
-    f.write(f"Test Macro-F1:        {test_macro_f1:.4f}\n")
-    f.write(f"Test Micro-F1:        {test_micro_f1:.4f}\n")
-print(f"Metrics saved: {metrics_path}")
+print("\n" + "="*45)
+print("ФИНАЛЬНЫЕ РЕЗУЛЬТАТЫ (Test)")
+print("="*45)
+print(f"\n{'Эмоция':<12} {'Accuracy':>10} {'F1':>8}")
+print("-" * 32)
+for i, name in enumerate(EMOTION_NAMES):
+    f1 = f1_score(true[:, i], preds[:, i], zero_division=0)
+    print(f"{name:<12} {per_acc[i]*100:>9.1f}% {f1*100:>7.1f}%")
+print("-" * 32)
+print(f"{'Среднее':<12} {avg_acc*100:>9.1f}% {macro_f1*100:>7.1f}%")
+print(f"\n  Macro-F1    : {macro_f1*100:.1f}%")
+print(f"  Weighted-F1 : {wf1*100:.1f}%")
 
 
 # =========================
-# 10. PER-CLASS THRESHOLD TUNING
+# 10. THRESHOLD TUNING
 # =========================
-print("\n" + "="*60)
-print("PER-CLASS THRESHOLD TUNING")
-print("="*60)
-
-model.eval()
 all_probs, all_labels = [], []
-
+model.eval()
 with torch.no_grad():
     for text, audio, video, labels in valid_loader:
         text, audio, video = text.to(device), audio.to(device), video.to(device)
-        probs = torch.sigmoid(model(text, audio, video))
-        all_probs.append(probs.cpu().numpy())
+        f_logits, _, _, _ = model(text, audio, video)  # ← исправлено
+        all_probs.append(torch.sigmoid(f_logits).cpu().numpy())
         all_labels.append(labels.numpy())
 
 all_probs  = np.vstack(all_probs)
 all_labels = np.vstack(all_labels).astype(int)
 
-# Подбираем оптимальный порог для каждой эмоции
-thresholds = np.arange(0.1, 0.7, 0.05)
 best_thresholds = []
-
-print("\nОптимальные пороги по Validation set:")
-for i, name in enumerate(EMOTION_NAMES):
-    best_t, best_f1 = 0.5, 0.0
-    for t in thresholds:
-        preds = (all_probs[:, i] >= t).astype(int)
-        f1 = f1_score(all_labels[:, i], preds, zero_division=0)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_t  = t
+for i in range(6):
+    best_t = max(np.arange(0.1, 0.7, 0.05),
+                 key=lambda t: f1_score(all_labels[:, i],
+                                        (all_probs[:, i] >= t).astype(int),
+                                        zero_division=0))
     best_thresholds.append(best_t)
-    print(f"  {name:<10}: threshold={best_t:.2f}  val_F1={best_f1:.4f}")
 
-# Применяем на test set
-print("\n=== TEST С PER-CLASS ПОРОГАМИ ===")
 all_preds, all_true = [], []
-
 with torch.no_grad():
     for text, audio, video, labels in test_loader:
         text, audio, video = text.to(device), audio.to(device), video.to(device)
-        probs = torch.sigmoid(model(text, audio, video)).cpu().numpy()
-        preds = np.zeros_like(probs, dtype=int)
-        for i, t in enumerate(best_thresholds):
-            preds[:, i] = (probs[:, i] >= t).astype(int)
-        all_preds.append(preds)
+        f_logits, _, _, _ = model(text, audio, video)  # ← исправлено
+        probs = torch.sigmoid(f_logits).cpu().numpy()
+        p = np.stack([(probs[:, i] >= best_thresholds[i]).astype(int)
+                      for i in range(6)], axis=1)
+        all_preds.append(p)
         all_true.append(labels.numpy())
 
 all_preds = np.vstack(all_preds)
 all_true  = np.vstack(all_true).astype(int)
 
-print(classification_report(all_true, all_preds, target_names=EMOTION_NAMES, zero_division=0))
-print(f"Macro-F1:    {f1_score(all_true, all_preds, average='macro',    zero_division=0):.4f}")
-print(f"Weighted-F1: {f1_score(all_true, all_preds, average='weighted', zero_division=0):.4f}")
+print("\n" + "="*45)
+print("ПОСЛЕ THRESHOLD TUNING (Test)")
+print("="*45)
+print(f"\n{'Эмоция':<12} {'Threshold':>10} {'Accuracy':>10} {'F1':>8}")
+print("-" * 43)
+for i, name in enumerate(EMOTION_NAMES):
+    acc = accuracy_score(all_true[:, i], all_preds[:, i])
+    f1  = f1_score(all_true[:, i], all_preds[:, i], zero_division=0)
+    print(f"{name:<12} {best_thresholds[i]:>10.2f} {acc*100:>9.1f}% {f1*100:>7.1f}%")
 
-# Сохраняем пороги
-thresholds_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_thresholds.txt"
-with open(thresholds_path, "w") as f:
-    for name, t in zip(EMOTION_NAMES, best_thresholds):
-        f.write(f"{name}: {t:.2f}\n")
-print(f"\nПороги сохранены: {thresholds_path}")
+macro_t = f1_score(all_true, all_preds, average='macro',    zero_division=0)
+wf1_t   = f1_score(all_true, all_preds, average='weighted', zero_division=0)
+avg_t   = np.mean([accuracy_score(all_true[:, i], all_preds[:, i]) for i in range(6)])
+print("-" * 43)
+print(f"\n  Средний Accuracy : {avg_t*100:.1f}%")
+print(f"  Macro-F1         : {macro_t*100:.1f}%")
+print(f"  Weighted-F1      : {wf1_t*100:.1f}%")

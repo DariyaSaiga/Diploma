@@ -296,6 +296,11 @@ model = MultimodalEmotionModel(
     dropout=0.2,
 ).to(device)
 
+checkpoint_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
+if os.path.exists(checkpoint_path):
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    print("✓ Загружена модель из чекпоинта")
+
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {total_params:,}")
 
@@ -307,7 +312,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 NUM_EPOCHS = 50
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=1e-4,     
+    max_lr=3e-5,     
     steps_per_epoch=len(train_loader),
     epochs=NUM_EPOCHS,
     pct_start=0.1,
@@ -378,8 +383,8 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 # =========================
 # 8. TRAIN LOOP w/ Early Stopping
 # =========================
-best_macro_f1 = -1.0
-patience = 10
+best_macro_f1 = 0.3946
+patience = 15
 no_improve = 0
 os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
 best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"

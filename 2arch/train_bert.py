@@ -270,7 +270,7 @@ model = MultimodalEmotionModelBERT(
     num_fusion_layers=2,
     num_classes=6,
     dropout=0.2,
-    bert_finetune_layers=3,
+    bert_finetune_layers=6,
 ).to(device)
 
 # Считаем параметры
@@ -289,7 +289,7 @@ other_params = [p for p in model.parameters() if p.requires_grad and
                 not any(p is bp for bp in bert_params)]
 
 optimizer = torch.optim.AdamW([
-    {'params': bert_params,  'lr': 1e-5},
+    {'params': bert_params,  'lr': 3e-5},
     {'params': other_params, 'lr': 1e-4},
 ], weight_decay=1e-2)
 

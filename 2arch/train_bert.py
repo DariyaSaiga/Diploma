@@ -293,7 +293,7 @@ optimizer = torch.optim.AdamW([
     {'params': other_params, 'lr': 1e-4},
 ], weight_decay=1e-2)
 
-NUM_EPOCHS        = 3
+NUM_EPOCHS        = 30
 ACCUM_STEPS       = 2   # gradient accumulation: эффективный batch = 16*2 = 32
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,

@@ -166,14 +166,7 @@ class BottleneckFusionModel(nn.Module):
         # Статья: XMBT — ALBERT/BERT запускается онлайн, дообучается с lr/10
         # Берём last_hidden_state [B, 50, 768], не CLS [B, 768]
         self.bert = BertModel.from_pretrained(BERT_MODEL)
-
-        # ── Замораживаем BERT полностью ───────────────────────────────────────────
-        # Статья: MER-SEM-MBT (Xia et al., 2022) — BERT frozen, используется как
-        # feature extractor. При 13934 samples BERT переобучается за 1-2 эпохи.
-        for param in self.bert.parameters():
-            param.requires_grad = False
-        
-        self.text_proj = nn.Linear(768, HIDDEN_DIM)
+        self.text_proj = nn.Linear(768, HIDDEN_DIM)  # 768 → 128
 
         # ── Проблема 1: Audio и Vision энкодеры — Conv1D проекция ─────────────
         # Статья: DBA, MulT — Conv1D для готовых признаков COVAREP и OpenFace
@@ -205,6 +198,13 @@ class BottleneckFusionModel(nn.Module):
             nn.Dropout(DROPOUT),
             nn.Linear(HIDDEN_DIM, N_EMOTIONS),
         )
+
+        # ── Auxiliary heads — по одной на каждую модальность ─────────────────────
+        # Статья: XMBT (Nguyen et al., 2025) — classification tokens для каждой
+        # модальности передаются в отдельные linear layers для auxiliary loss
+        self.head_text   = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
+        self.head_audio  = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
+        self.head_vision = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
 
         self.dropout = nn.Dropout(DROPOUT)
 
@@ -250,8 +250,11 @@ class BottleneckFusionModel(nn.Module):
         fused = torch.cat([text_cls, audio_pool, vision_pool], dim=-1)  # [B, HIDDEN_DIM*3]
 
         # ── Финальная классификация ───────────────────────────────────────────
-        logits = self.classifier(fused)   # [B, 6]
-        return logits
+        logits_fuse   = self.classifier(fused)
+        logits_text   = self.head_text(text_cls)
+        logits_audio  = self.head_audio(audio_pool)
+        logits_vision = self.head_vision(vision_pool)
+        return logits_fuse, logits_text, logits_audio, logits_vision
 
 
 # ── Быстрая проверка ──────────────────────────────────────────────────────────
@@ -290,5 +293,9 @@ if __name__ == "__main__":
     print(f"\nВход  — audio : {batch['audio'].shape}")
     print(f"Вход  — vision: {batch['vision'].shape}")
     print(f"Вход  — text  : {batch['input_ids'].shape}")
-    print(f"Выход — logits: {logits.shape}")
+    logits_fuse, logits_text, logits_audio, logits_vision = model(...)
+    print(f"Выход — logits_fuse : {logits_fuse.shape}")
+    print(f"Выход — logits_text : {logits_text.shape}")
+    print(f"Выход — logits_audio: {logits_audio.shape}")
+    print(f"Выход — logits_vision:{logits_vision.shape}")
     print("\n✅ model.py работает корректно")

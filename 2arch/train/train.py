@@ -48,12 +48,17 @@ def train_epoch(model, loader, optimizer, criterion, device):
 
         optimizer.zero_grad()
 
-        logits = model(input_ids, attention_mask, audio, vision, audio_mask, vision_mask)
+        logits_fuse, logits_text, logits_audio, logits_vision = model(
+            input_ids, attention_mask, audio, vision, audio_mask, vision_mask
+      )
 
-        # ── Проблема 4: BCEWithLogitsLoss + pos_weight для class imbalance ────
-        # Статья: MER-SEM-MBT (Xia et al., 2022) — "binary cross-entropy loss
-        # weighted by the ratio of positive and negative samples"
-        loss = criterion(logits, labels)
+        # ── Auxiliary losses — каждая модальность учится независимо ──────────────
+        # Статья: XMBT — L = L_fuse + L_text + L_audio + L_vision
+        # Это регуляризует bottleneck и не даёт text доминировать
+        loss = (criterion(logits_fuse,   labels) +
+                criterion(logits_text,   labels) +
+                criterion(logits_audio,  labels) +
+                criterion(logits_vision, labels))
         loss.backward()
 
         # ── Gradient clipping для трансформеров ───────────────────────────────
@@ -87,12 +92,12 @@ def evaluate(model, loader, criterion, device):
         vision_mask    = batch["vision_mask"].to(device)
         labels         = batch["labels"].to(device)
 
-        logits = model(input_ids, attention_mask, audio, vision, audio_mask, vision_mask)
-        loss   = criterion(logits, labels)
+        logits_fuse, _, _, _ = model(input_ids, attention_mask, audio, vision, audio_mask, vision_mask)
+        loss = criterion(logits_fuse, labels)
         total_loss += loss.item()
 
         # sigmoid → бинаризация порогом 0.5
-        preds = (torch.sigmoid(logits) > 0.5).cpu().numpy()
+        preds = (torch.sigmoid(logits_fuse) > 0.5)
         all_preds.append(preds)
         all_labels.append(labels.cpu().numpy())
 
@@ -157,12 +162,10 @@ def main():
 
     # ── AdamW optimizer ───────────────────────────────────────────────────────
     # Статья: DBA (He et al., 2024) — "AdamW optimizer and cosine learning rate decay"
-    # ── BERT заморожен — обучаем только остальные параметры ──────────────────
-    # Статья: MER-SEM-MBT — frozen BERT, только fusion и энкодеры обучаются
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=LR_MAIN
-    )
+    optimizer = torch.optim.AdamW([
+        {"params": bert_params,  "lr": LR_BERT},   # BERT медленнее
+        {"params": other_params, "lr": LR_MAIN},   # остальное быстрее
+    ])
 
     # ── CosineAnnealingLR ─────────────────────────────────────────────────────
     # Статья: DBA, XMBT — cosine annealing постепенно снижает lr до ~0

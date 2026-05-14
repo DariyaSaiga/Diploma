@@ -157,10 +157,12 @@ def main():
 
     # ── AdamW optimizer ───────────────────────────────────────────────────────
     # Статья: DBA (He et al., 2024) — "AdamW optimizer and cosine learning rate decay"
-    optimizer = torch.optim.AdamW([
-        {"params": bert_params,  "lr": LR_BERT},   # BERT медленнее
-        {"params": other_params, "lr": LR_MAIN},   # остальное быстрее
-    ])
+    # ── BERT заморожен — обучаем только остальные параметры ──────────────────
+    # Статья: MER-SEM-MBT — frozen BERT, только fusion и энкодеры обучаются
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=LR_MAIN
+    )
 
     # ── CosineAnnealingLR ─────────────────────────────────────────────────────
     # Статья: DBA, XMBT — cosine annealing постепенно снижает lr до ~0

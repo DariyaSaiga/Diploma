@@ -7,7 +7,7 @@ HIDDEN_DIM     = 128   # общая размерность всех модаль
 N_HEADS        = 8     # число голов в multi-head attention (HIDDEN_DIM делится на N_HEADS)
 N_BOTTLENECK   = 16    # число bottleneck tokens — DBA: n=16 оптимально по ablation
 N_LAYERS       = 2     # число слоёв bottleneck — XMBT: L=2 лучший результат на CMU-MOSEI
-DROPOUT        = 0.3   # MulT, Table 5: dropout=0.1 для CMU-MOSEI
+DROPOUT        = 0.1   # MulT, Table 5: dropout=0.1 для CMU-MOSEI
 N_EMOTIONS     = 6     # happy, sad, anger, surprise, disgust, fear
 BERT_MODEL     = "bert-base-uncased"
 
@@ -166,7 +166,14 @@ class BottleneckFusionModel(nn.Module):
         # Статья: XMBT — ALBERT/BERT запускается онлайн, дообучается с lr/10
         # Берём last_hidden_state [B, 50, 768], не CLS [B, 768]
         self.bert = BertModel.from_pretrained(BERT_MODEL)
-        self.text_proj = nn.Linear(768, HIDDEN_DIM)  # 768 → 128
+
+        # ── Замораживаем BERT полностью ───────────────────────────────────────────
+        # Статья: MER-SEM-MBT (Xia et al., 2022) — BERT frozen, используется как
+        # feature extractor. При 13934 samples BERT переобучается за 1-2 эпохи.
+        for param in self.bert.parameters():
+            param.requires_grad = False
+        
+        self.text_proj = nn.Linear(768, HIDDEN_DIM)
 
         # ── Проблема 1: Audio и Vision энкодеры — Conv1D проекция ─────────────
         # Статья: DBA, MulT — Conv1D для готовых признаков COVAREP и OpenFace

@@ -43,6 +43,7 @@ def train_epoch(model, loader, optimizer, criterion, device):
         vision      = batch["vision"].to(device)
         audio_mask  = batch["audio_mask"].to(device)
         vision_mask = batch["vision_mask"].to(device)
+        labels      = batch["labels"].to(device).float()
 
         optimizer.zero_grad()
 
@@ -88,6 +89,7 @@ def evaluate(model, loader, criterion, device):
         vision      = batch["vision"].to(device)
         audio_mask  = batch["audio_mask"].to(device)
         vision_mask = batch["vision_mask"].to(device)
+        labels      = batch["labels"].to(device).float()
 
         text = batch["text"].to(device)
         logits_fuse, _, _, _ = model(text, audio, vision, audio_mask, vision_mask)

@@ -195,11 +195,6 @@ class BottleneckFusionModel(nn.Module):
         self.audio_proj  = ModalityProjection(input_dim=74)   # COVAREP 74-dim
         self.vision_proj = ModalityProjection(input_dim=35)   # OpenFace 35-dim
 
-        # ── SEM для audio и vision ────────────────────────────────────────────────────
-        # Статья: MER-SEM-MBT — отдельный SEM для каждой модальности
-        self.sem_audio  = SemanticEnhancement()
-        self.sem_vision = SemanticEnhancement()
-
         # ── Проблема 6: Positional encoding для audio и vision ────────────────
         self.pos_enc_audio  = PositionalEncoding(max_len=60)
         self.pos_enc_vision = PositionalEncoding(max_len=60)
@@ -256,12 +251,6 @@ class BottleneckFusionModel(nn.Module):
         audio  = self.pos_enc_audio(audio)
         vision = self.pos_enc_vision(vision)
 
-        # ── SEM: текст направляет audio и vision ─────────────────────────────
-        # Статья: MER-SEM-MBT — CLS токен как K и V, audio/vision как Q
-        # Применяем ПОСЛЕ positional encoding и ДО bottleneck
-        text_cls_sem = text[:, 0:1, :]              # [B, 1, HIDDEN_DIM]
-        audio  = self.sem_audio(audio,  text_cls_sem)
-        vision = self.sem_vision(vision, text_cls_sem)
 
         # ── Инициализируем bottleneck tokens для батча ────────────────────────
         bottleneck = self.bottleneck.expand(B, -1, -1)  # [B, N_BOTTLENECK, HIDDEN_DIM]

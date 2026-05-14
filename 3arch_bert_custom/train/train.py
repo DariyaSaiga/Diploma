@@ -96,7 +96,7 @@ def evaluate(model, loader, criterion, device):
         total_loss += loss.item()
 
         # sigmoid → бинаризация порогом 0.5
-        preds = (torch.sigmoid(logits_fuse) > 0.5)
+        preds = (torch.sigmoid(logits_fuse) > 0.5).cpu().numpy()
         all_preds.append(preds)
         all_labels.append(labels.cpu().numpy())
 

@@ -61,6 +61,28 @@ class PositionalEncoding(nn.Module):
         # x: [B, T, HIDDEN_DIM]
         return x + self.pe[:, :x.size(1)]
 
+# ── Semantic Enhancement Module ───────────────────────────────────────────────
+# Статья: MER-SEM-MBT (Xia et al., 2022) — "text CLS token as key and value
+# in cross-attention with audio/visual features as query — latent adaption
+# from text to audio/visual modality improves unimodal encoders"
+class SemanticEnhancement(nn.Module):
+    """
+    Текстовый CLS вектор направляет audio или vision через cross-attention.
+    Q = audio/vision tokens, K = V = text CLS
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.cross_attn = nn.MultiheadAttention(
+            HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True
+        )
+        self.norm = nn.LayerNorm(HIDDEN_DIM)
+
+    def forward(self, modality, text_cls):
+        # modality: [B, T, HIDDEN_DIM] — audio или vision
+        # text_cls: [B, 1, HIDDEN_DIM] — CLS токен текста как K и V
+        enhanced, _ = self.cross_attn(modality, text_cls, text_cls)
+        return self.norm(modality + enhanced)
 
 # ── Один слой Bottleneck Attention ────────────────────────────────────────────
 # Статья: NeurIPS 2021 MBT (Nagrani et al.) — bottleneck tokens как мост
@@ -173,6 +195,11 @@ class BottleneckFusionModel(nn.Module):
         self.audio_proj  = ModalityProjection(input_dim=74)   # COVAREP 74-dim
         self.vision_proj = ModalityProjection(input_dim=35)   # OpenFace 35-dim
 
+        # ── SEM для audio и vision ────────────────────────────────────────────────────
+        # Статья: MER-SEM-MBT — отдельный SEM для каждой модальности
+        self.sem_audio  = SemanticEnhancement()
+        self.sem_vision = SemanticEnhancement()
+
         # ── Проблема 6: Positional encoding для audio и vision ────────────────
         self.pos_enc_audio  = PositionalEncoding(max_len=60)
         self.pos_enc_vision = PositionalEncoding(max_len=60)
@@ -228,6 +255,13 @@ class BottleneckFusionModel(nn.Module):
         # ── Проблема 6: добавляем positional encoding ─────────────────────────
         audio  = self.pos_enc_audio(audio)
         vision = self.pos_enc_vision(vision)
+
+        # ── SEM: текст направляет audio и vision ─────────────────────────────
+        # Статья: MER-SEM-MBT — CLS токен как K и V, audio/vision как Q
+        # Применяем ПОСЛЕ positional encoding и ДО bottleneck
+        text_cls_sem = text[:, 0:1, :]              # [B, 1, HIDDEN_DIM]
+        audio  = self.sem_audio(audio,  text_cls_sem)
+        vision = self.sem_vision(vision, text_cls_sem)
 
         # ── Инициализируем bottleneck tokens для батча ────────────────────────
         bottleneck = self.bottleneck.expand(B, -1, -1)  # [B, N_BOTTLENECK, HIDDEN_DIM]
@@ -293,7 +327,8 @@ if __name__ == "__main__":
     print(f"\nВход  — audio : {batch['audio'].shape}")
     print(f"Вход  — vision: {batch['vision'].shape}")
     print(f"Вход  — text  : {batch['input_ids'].shape}")
-    logits_fuse, logits_text, logits_audio, logits_vision = model(...)
+    logits_fuse, logits_text, logits_audio, logits_vision = logits
+    print(f"Выход — logits_fuse : {logits_fuse.shape}")
     print(f"Выход — logits_fuse : {logits_fuse.shape}")
     print(f"Выход — logits_text : {logits_text.shape}")
     print(f"Выход — logits_audio: {logits_audio.shape}")

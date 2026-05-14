@@ -8,3 +8,4 @@ result2.txt
 result_prep.txt
 __pycache__/
 .ipynb_checkpoints/
+.aider*

@@ -12,9 +12,9 @@ from models  import BottleneckFusionModel
 
 
 LR_MAIN     = 1e-4   # lr основной сети — DBA (He et al., 2024): lr=1e-4
-LR_BERT     = 1e-5   # lr BERT — XMBT (Nguyen et al., 2025): text lr = lr_main / 10
+LR_BERT     = 5e-6   # lr BERT — XMBT (Nguyen et al., 2025): text lr = lr_main / 10
 EPOCHS      = 50     # DBA: max 80, XMBT: 30 — берём 50 как компромисс
-PATIENCE    = 6      # XMBT: early stopping patience = 6 эпох
+PATIENCE    = 10      # XMBT: early stopping patience = 6 эпох
 GRAD_CLIP   = 1.0    # MulT (Tsai et al., 2019): gradient clip = 1.0
 
 SAVE_PATH   = "best_model.pt"   # путь для сохранения лучшей модели

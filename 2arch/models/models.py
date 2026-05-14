@@ -7,7 +7,7 @@ HIDDEN_DIM     = 128   # общая размерность всех модаль
 N_HEADS        = 8     # число голов в multi-head attention (HIDDEN_DIM делится на N_HEADS)
 N_BOTTLENECK   = 16    # число bottleneck tokens — DBA: n=16 оптимально по ablation
 N_LAYERS       = 2     # число слоёв bottleneck — XMBT: L=2 лучший результат на CMU-MOSEI
-DROPOUT        = 0.1   # MulT, Table 5: dropout=0.1 для CMU-MOSEI
+DROPOUT        = 0.3   # MulT, Table 5: dropout=0.1 для CMU-MOSEI
 N_EMOTIONS     = 6     # happy, sad, anger, surprise, disgust, fear
 BERT_MODEL     = "bert-base-uncased"
 

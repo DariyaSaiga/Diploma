@@ -91,7 +91,6 @@ def evaluate(model, loader, criterion, device):
         vision_mask = batch["vision_mask"].to(device)
         labels      = batch["labels"].to(device).float()
 
-        text = batch["text"].to(device)
         logits_fuse, _, _, _ = model(text, audio, vision, audio_mask, vision_mask)
         loss = criterion(logits_fuse, labels)
         total_loss += loss.item()

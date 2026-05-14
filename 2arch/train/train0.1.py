@@ -381,7 +381,7 @@ def evaluate(loader, split_name="Valid", threshold=0.5):
 best_macro_f1 = -1.0
 patience, no_improve = 15, 0
 os.makedirs("/content/drive/MyDrive/Дипломка_правильная/checkpoints", exist_ok=True)
-best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm_sem.pt"
+best_path = "/content/drive/MyDrive/Дипломка_правильная/checkpoints/best_model_bert_cnn_bilstm.pt"
 
 print(f"\n{'Epoch':<8} {'Loss':>8} {'Acc':>8} {'MacroF1':>10} {'WF1':>8}")
 print("-" * 48)

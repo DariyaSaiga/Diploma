@@ -46,25 +46,30 @@ def train_epoch(model, loader, optimizer, criterion, device):
         vision_mask    = batch["vision_mask"].to(device)
         labels         = batch["labels"].to(device)
 
+        # ── Experiment 3: Modality Dropout ───────────────────────────────────────
+        # Affect-Diff (2025): dropout-like regularization / frame masking p=0.10
+        # помогает не переобучаться и не зависеть только от одной модальности.
+        # Применяем только в train_epoch, НЕ в evaluate.
+        
+        if torch.rand(1).item() < 0.10:
+            audio = torch.zeros_like(audio)
+        
+        if torch.rand(1).item() < 0.10:
+            vision = torch.zeros_like(vision)
+
         optimizer.zero_grad()
 
         logits_fuse, logits_text, logits_audio, logits_vision = model(
             input_ids, attention_mask, audio, vision, audio_mask, vision_mask
       )
 
-        # ── Experiment 2: Weighted auxiliary loss ────────────────────────────────
-        # Идея из XMBT+DRA (Nguyen et al., 2025):
-        # auxiliary losses помогают модальностям учиться,
-        # но fusion loss должен оставаться главным.
-        #
-        # Поэтому не делаем L_fuse + L_text + L_audio + L_vision с равными весами.
-        # Вместо этого:
-        # L = L_fuse + 0.3*L_text + 0.2*L_audio + 0.2*L_vision
-        loss_f = criterion(logits_fuse, labels)
-        loss_t = criterion(logits_text, labels)
-        loss_a = criterion(logits_audio, labels)
-        loss_v = criterion(logits_vision, labels)
-        loss = (loss_f + 0.3 * loss_t + 0.2 * loss_a + 0.2 * loss_v) / 1.7
+        # ── Auxiliary losses — каждая модальность учится независимо ──────────────
+        # Статья: XMBT — L = L_fuse + L_text + L_audio + L_vision
+        # Это регуляризует bottleneck и не даёт text доминировать
+        loss = (criterion(logits_fuse,   labels) +
+                criterion(logits_text,   labels) +
+                criterion(logits_audio,  labels) +
+                criterion(logits_vision, labels))
         loss.backward()
 
         # ── Gradient clipping для трансформеров ───────────────────────────────

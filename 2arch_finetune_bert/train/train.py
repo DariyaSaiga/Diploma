@@ -17,7 +17,7 @@ EPOCHS      = 50     # DBA: max 80, XMBT: 30 — берём 50 как компр
 PATIENCE    = 5      # XMBT: early stopping patience = 6 эпох
 GRAD_CLIP   = 1.0    # MulT (Tsai et al., 2019): gradient clip = 1.0
 
-SAVE_PATH   = "best_model.pt"   # путь для сохранения лучшей модели
+SAVE_PATH   = "/content/drive/MyDrive/Дипломка_правильная/results/best_model.pt"   # путь для сохранения лучшей модели
 
 # =============================================================================
 

@@ -188,7 +188,14 @@ class BottleneckFusionModel(nn.Module):
         # Статья: XMBT — ALBERT/BERT запускается онлайн, дообучается с lr/10
         # Берём last_hidden_state [B, 50, 768], не CLS [B, 768]
         self.bert = BertModel.from_pretrained(BERT_MODEL)
-        self.text_proj = nn.Linear(768, HIDDEN_DIM)  # 768 → 128
+
+        # ── Замораживаем BERT — используем как feature extractor ─────────────────
+        # Статья: DBA — BERT заморожен, берём среднее последних 4 hidden слоёв
+        # При 13,934 samples BERT с 110M параметрами переобучается за 1-2 эпохи
+        for param in self.bert.parameters():
+            param.requires_grad = False
+
+        self.text_proj = nn.Linear(768, HIDDEN_DIM)
 
         # ── Проблема 1: Audio и Vision энкодеры — Conv1D проекция ─────────────
         # Статья: DBA, MulT — Conv1D для готовых признаков COVAREP и OpenFace
@@ -239,8 +246,15 @@ class BottleneckFusionModel(nn.Module):
         B = input_ids.size(0)
 
         # ── Проблема 1: BERT — берём все токены, не только CLS ────────────────
-        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        text = bert_out.last_hidden_state          # [B, 50, 768]
+        # ── Среднее последних 4 слоёв BERT как в DBA ─────────────────────────────
+        # Статья: DBA — "average of the last four hidden layers as word-level features"
+        bert_out = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True
+        )
+        # hidden_states — tuple из 13 тензоров [B, 50, 768] (0=embedding, 1-12=layers)
+        text = torch.stack(bert_out.hidden_states[-4:], dim=0).mean(dim=0)  # [B, 50, 768]
         text = self.dropout(self.text_proj(text))  # [B, 50, HIDDEN_DIM]
 
         # ── Audio и Vision проекция ───────────────────────────────────────────

@@ -156,16 +156,10 @@ def main():
     # Статья: XMBT (Nguyen et al., 2025) — "scaled learning rate strategy,
     # text learning rate factor to prevent gradient updates destabilizing training"
     # Статья: MER-SEM-MBT (Xia et al., 2022) — "smaller learning rate 1e-5 to fine-tune"
-    bert_params  = list(model.bert.parameters())
-    other_params = [p for p in model.parameters()
-                    if not any(p is bp for bp in bert_params)]
-
-    # ── AdamW optimizer ───────────────────────────────────────────────────────
-    # Статья: DBA (He et al., 2024) — "AdamW optimizer and cosine learning rate decay"
-    optimizer = torch.optim.AdamW([
-        {"params": bert_params,  "lr": LR_BERT},   # BERT медленнее
-        {"params": other_params, "lr": LR_MAIN},   # остальное быстрее
-    ])
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=LR_MAIN
+    )
 
     # ── CosineAnnealingLR ─────────────────────────────────────────────────────
     # Статья: DBA, XMBT — cosine annealing постепенно снижает lr до ~0

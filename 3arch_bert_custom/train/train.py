@@ -171,6 +171,7 @@ def main():
 
     # ── Early stopping ────────────────────────────────────────────────────────
     # Статья: XMBT — "training halts if F1 + WA does not improve for 6 epochs"
+    best_f1      = 0.0
     patience_cnt  = 0
 
     print(f"\nНачинаем обучение: {EPOCHS} эпох, patience={PATIENCE}\n")

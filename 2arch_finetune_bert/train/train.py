@@ -50,11 +50,11 @@ def train_epoch(model, loader, optimizer, criterion, device):
         # Affect-Diff (2025): dropout-like regularization / frame masking p=0.10
         # помогает не переобучаться и не зависеть только от одной модальности.
         # Применяем только в train_epoch, НЕ в evaluate.
-        
-        if torch.rand(1).item() < 0.10:
+
+        if torch.rand(1).item() < 0.05:
             audio = torch.zeros_like(audio)
-        
-        if torch.rand(1).item() < 0.10:
+
+        if torch.rand(1).item() < 0.05:
             vision = torch.zeros_like(vision)
 
         optimizer.zero_grad()

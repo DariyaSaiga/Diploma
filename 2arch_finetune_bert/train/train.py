@@ -51,10 +51,10 @@ def train_epoch(model, loader, optimizer, criterion, device):
         # помогает не переобучаться и не зависеть только от одной модальности.
         # Применяем только в train_epoch, НЕ в evaluate.
 
-        if torch.rand(1).item() < 0.07:
+        if torch.rand(1).item() < 0.05:
             audio = torch.zeros_like(audio)
 
-        if torch.rand(1).item() < 0.07:
+        if torch.rand(1).item() < 0.05:
             vision = torch.zeros_like(vision)
 
         optimizer.zero_grad()

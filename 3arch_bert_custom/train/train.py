@@ -19,9 +19,6 @@ GRAD_CLIP   = 1.0    # MulT (Tsai et al., 2019): gradient clip = 1.0
 
 
 SAVE_PATH   = "best_model.pt"   # путь для сохранения лучшей модели
-# ── Resume training — продолжить с чекпоинта ─────────────────────────────
-# Поставь путь к сохранённой модели, или None чтобы начать с нуля
-RESUME_FROM = "/content/drive/MyDrive/Дипломка_правильная/results/best_model_bert_custom.pt"
 
 # =============================================================================
 
@@ -152,17 +149,8 @@ def main():
     # ── Загрузка данных ───────────────────────────────────────────────────────
     loaders, pos_weight = get_dataloaders()
 
-    best_f1 = 0.4627  # результат лучшей эпохи чекпоинта
-    
     # ── Модель ───────────────────────────────────────────────────────────────
     model = BottleneckFusionModel().to(device)
-
-    # ── Загрузка чекпоинта для продолжения обучения ───────────────────────────
-    if RESUME_FROM and os.path.exists(RESUME_FROM):
-        model.load_state_dict(torch.load(RESUME_FROM, map_location=device))
-        print(f"✅ Загружен чекпоинт: {RESUME_FROM}")
-    else:
-        print("🆕 Обучение с нуля")
 
     # ── Проблема 2: два lr — BERT и остальная сеть ────────────────────────────
     # Статья: XMBT (Nguyen et al., 2025) — "scaled learning rate strategy,
@@ -183,7 +171,6 @@ def main():
 
     # ── Early stopping ────────────────────────────────────────────────────────
     # Статья: XMBT — "training halts if F1 + WA does not improve for 6 epochs"
-    best_f1       = 0.0
     patience_cnt  = 0
 
     print(f"\nНачинаем обучение: {EPOCHS} эпох, patience={PATIENCE}\n")

@@ -6,8 +6,12 @@ import logging
 import sys
 import time
 import traceback
+from collections import deque
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
+
+# История сессии — последние 5 результатов в памяти
+_session_history: deque = deque(maxlen=5)
 
 import numpy as np
 import torch
@@ -249,6 +253,7 @@ class EmotionResponse(BaseModel):
     probabilities: Dict[str, float]
     mock: bool = False
     latency_ms: float
+    transcript: Optional[str] = None
     # Дополнительная диагностика — какие модальности реально использованы
     modalities_used: Dict[str, bool] = Field(
         default_factory=lambda: {"text": False, "audio": False, "vision": False}
@@ -704,12 +709,31 @@ async def analyze_video(
         result["emotion"], result["confidence"], latency_ms, active, model_loader.is_mock(),
     )
 
+    # Сохраняем в историю сессии
+    _session_history.appendleft({
+        "id": str(int(time.time() * 1000)),
+        "emotion": result["emotion"],
+        "confidence": result["confidence"],
+        "probabilities": result["probabilities"],
+        "transcript": transcript,
+        "modalities_used": modalities_used,
+        "latency_ms": round(latency_ms, 2),
+    })
+
     return EmotionResponse(
         **result,
         mock=model_loader.is_mock(),
         latency_ms=round(latency_ms, 2),
         modalities_used=modalities_used,
+        transcript=transcript,
     )
+
+
+# ── GET /api/history ─────────────────────────────────────────────────────────
+@app.get("/api/history", tags=["Session"])
+async def get_history():
+    """Последние 5 результатов анализа в текущей сессии (хранится в памяти)."""
+    return {"history": list(_session_history)}
 
 
 # ── WebSocket /ws/camera ──────────────────────────────────────────────────────

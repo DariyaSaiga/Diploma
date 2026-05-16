@@ -81,6 +81,42 @@ def extract_audio_from_video(video_path: str, out_wav: str) -> bool:
     except subprocess.TimeoutExpired:
         logger.error("ffmpeg timeout")
         return False
+    
+
+def compress_video_for_inference(video_path: str, out_path: str) -> bool:
+    """
+    Конвертирует любое видео (.mov/.mp4) в маленький mp4 для быстрого vision extraction.
+    Audio не нужен, потому что audio извлекается из оригинального видео.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-t", "6",
+                "-vf", "fps=5,scale=360:-2",
+                "-an",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                out_path,
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            logger.error("ffmpeg compress error: %s", result.stderr.decode(errors="replace"))
+            return False
+
+        ok = Path(out_path).exists() and Path(out_path).stat().st_size > 0
+        if ok:
+            logger.info("✅ Fast video created for vision: %s", out_path)
+        return ok
+
+    except Exception as e:
+        logger.error("Ошибка сжатия видео: %s", e)
+        return False
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,80 +216,87 @@ OPENFACE_AU_PRESENCE = [
 ]
 OPENFACE_COLS = OPENFACE_AU_INTENSITY + OPENFACE_AU_PRESENCE  # итого 35
 
+_detector = None
 
 def extract_openface_features(video_path: str) -> Optional[np.ndarray]:
-    """
-    Извлечь OpenFace AU признаки через py-feat.
+    global _detector
 
-    py-feat — Python реализация OpenFace Action Unit детектора.
-    Возвращает np.ndarray shape [VISION_SEQ_LEN, VISION_FEAT_DIM] или None.
-
-    pip install feat
-    """
     try:
         from feat import Detector
 
-        detector = Detector(
-            face_model="retinaface",         # точный детектор лица
-            landmark_model="mobilefacenet",  # landmarks для AU
-            au_model="xgb",                  # Action Unit модель (быстрая)
-            emotion_model="resmasknet",       # опционально — не используем
-            facepose_model="img2pose",
-            device="cpu",
-        )
-
-        # py-feat принимает видеофайл напрямую
-        video_result = detector.detect_video(
-            video_path,
-            skip_frames=None,  # обработать каждый кадр
-            batch_size=8,
-        )
-
-        # Извлекаем AU столбцы
-        available_intensity = [c for c in OPENFACE_AU_INTENSITY if c in video_result.columns]
-        available_presence  = [c for c in OPENFACE_AU_PRESENCE  if c in video_result.columns]
-        available_cols = available_intensity + available_presence
-
-        if not available_cols:
-            logger.error(
-                "py-feat не вернул AU колонки. Доступные: %s",
-                list(video_result.columns)[:20]
+        if _detector is None:
+            _detector = Detector(
+                face_model="retinaface",
+                landmark_model="mobilefacenet",
+                au_model="xgb",
+                facepose_model="img2pose",
+                emotion_model="resmasknet",
+                device="cpu",
             )
+
+        # Берём 8 равномерных кадров из видео
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if total_frames <= 0:
+            logger.error("Не удалось прочитать видео")
             return None
 
-        arr = video_result[available_cols].fillna(0).values.astype(np.float32)
-        logger.info("py-feat: извлечено %d фреймов x %d AU признаков", *arr.shape)
+        frame_indices = np.linspace(0, total_frames - 1, 3, dtype=int)
+        tmp_dir = Path(tempfile.gettempdir())
+        frame_paths = []
 
-        # ── Z-нормализация intensity признаков ────────────────────────────────
-        n_intensity = len(available_intensity)
-        if n_intensity > 0:
-            intensity_part = arr[:, :n_intensity]
-            mean = intensity_part.mean(axis=0, keepdims=True)
-            std  = intensity_part.std(axis=0, keepdims=True) + 1e-8
-            arr[:, :n_intensity] = (intensity_part - mean) / std
+        for i, idx in enumerate(frame_indices):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            frame = cv2.resize(frame, (400, 400))
+            frame_path = tmp_dir / f"feat_frame_{uuid.uuid4().hex}_{i}.jpg"
+            cv2.imwrite(str(frame_path), frame)
+            frame_paths.append(str(frame_path))
 
-        # ── Ресемплинг до VISION_SEQ_LEN ─────────────────────────────────────
-        T = arr.shape[0]
-        if T == 0:
-            logger.error("py-feat не обнаружил лиц в видео")
+        cap.release()
+
+        if not frame_paths:
+            logger.error("Не удалось извлечь кадры из видео")
             return None
+
+        result = _detector.detect_image(frame_paths)
+
+        for p in frame_paths:
+            Path(p).unlink(missing_ok=True)
+
+        au_cols = [c for c in result.columns if "AU" in c]
+
+        if not au_cols:
+            logger.error("py-feat не вернул AU колонки. Доступные: %s", list(result.columns)[:50])
+            return None
+
+        arr = result[au_cols].fillna(0).values.astype(np.float32)
+        logger.info("py-feat fast: извлечено %d кадров x %d AU признаков", *arr.shape)
+
+        if arr.shape[0] > 1:
+            mean = arr.mean(axis=0, keepdims=True)
+            std = arr.std(axis=0, keepdims=True) + 1e-8
+            arr = (arr - mean) / std
+
+        T, F = arr.shape
 
         if T >= VISION_SEQ_LEN:
             indices = np.linspace(0, T - 1, VISION_SEQ_LEN, dtype=int)
             arr = arr[indices]
         else:
-            pad = np.zeros((VISION_SEQ_LEN - T, arr.shape[1]), dtype=np.float32)
+            pad = np.zeros((VISION_SEQ_LEN - T, F), dtype=np.float32)
             arr = np.vstack([arr, pad])
 
-        # ── Привести к VISION_FEAT_DIM = 35 ──────────────────────────────────
-        F = arr.shape[1]
         if F < VISION_FEAT_DIM:
             pad_f = np.zeros((VISION_SEQ_LEN, VISION_FEAT_DIM - F), dtype=np.float32)
             arr = np.hstack([arr, pad_f])
         elif F > VISION_FEAT_DIM:
             arr = arr[:, :VISION_FEAT_DIM]
 
-        return arr  # [60, 35]
+        return arr
 
     except ImportError:
         logger.error("py-feat не установлен: pip install feat")
@@ -388,10 +431,13 @@ class VideoEmotionPipeline:
         tmp_dir = Path(tempfile.gettempdir())
         uid = uuid.uuid4().hex
         tmp_wav = str(tmp_dir / f"emotion_{uid}.wav")
+        tmp_video_fast = str(tmp_dir / f"emotion_fast_{uid}.mp4")
 
         try:
             # ── Шаг 1: извлечь аудио ─────────────────────────────────────────
             audio_ok = extract_audio_from_video(video_path, tmp_wav)
+            video_fast_ok = compress_video_for_inference(video_path, tmp_video_fast)
+            vision_source = tmp_video_fast if video_fast_ok else video_path
 
             # ── Шаг 2: COVAREP признаки ───────────────────────────────────────
             audio_tensor = None
@@ -407,7 +453,7 @@ class VideoEmotionPipeline:
                 logger.warning("⚠️  Аудио не извлечено из видео — audio=zeros")
 
             # ── Шаг 3: OpenFace AU признаки ───────────────────────────────────
-            vision_arr = extract_openface_features(video_path)
+            vision_arr = extract_openface_features(vision_source)
             vision_tensor = None
             if vision_arr is not None:
                 vision_tensor = torch.from_numpy(vision_arr).unsqueeze(0).to(self.device)
@@ -456,6 +502,7 @@ class VideoEmotionPipeline:
         finally:
             # Удаляем временный WAV
             Path(tmp_wav).unlink(missing_ok=True)
+            Path(tmp_video_fast).unlink(missing_ok=True)
 
     def predict_with_text(self, video_path: str, text: str) -> dict:
         """
@@ -508,6 +555,7 @@ def extract_all_features(
     uid = uuid.uuid4().hex
     tmp_video = tmp_dir / f"emotion_video_{uid}{suffix}"
     tmp_wav   = tmp_dir / f"emotion_audio_{uid}.wav"
+    tmp_video_fast = tmp_dir / f"emotion_fast_{uid}.mp4"
 
     modalities_used = {"text": False, "audio": False, "vision": False}
     transcript = None
@@ -518,6 +566,8 @@ def extract_all_features(
 
         # Аудио
         audio_ok = extract_audio_from_video(str(tmp_video), str(tmp_wav))
+        video_fast_ok = compress_video_for_inference(str(tmp_video), str(tmp_video_fast))
+        vision_source = str(tmp_video_fast) if video_fast_ok else str(tmp_video)
         if audio_ok:
             audio_arr = extract_covarep_features(str(tmp_wav))
             if audio_arr is not None:
@@ -525,7 +575,7 @@ def extract_all_features(
                 modalities_used["audio"] = True
 
         # Vision
-        vision_arr = extract_openface_features(str(tmp_video))
+        vision_arr = extract_openface_features(vision_source)
         if vision_arr is not None:
             vision_tensor = torch.from_numpy(vision_arr).unsqueeze(0).to(device)
             modalities_used["vision"] = True
@@ -543,6 +593,7 @@ def extract_all_features(
     finally:
         tmp_video.unlink(missing_ok=True)
         tmp_wav.unlink(missing_ok=True)
+        tmp_video_fast.unlink(missing_ok=True)
 
     return {
         "inference_kwargs": {

@@ -10,9 +10,14 @@ __pycache__/
 .ipynb_checkpoints/mosei_bottleneck.pkl.zip
 datasets/
 # Python virtual environments
+.DS_Store
 .venv/
 venv/
 env/
 ENV/
 back/.venv/
 back/venv/
+*.mp4
+*.mov
+*.avi
+*.mkv

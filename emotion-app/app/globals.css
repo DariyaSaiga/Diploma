@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   MOON SPELL COLOR PALETTE — swap these vars to retheme the whole app
+   ────────────────────────────────────────────────────────────────────────────── */
+:root {
+  --color-primary:    #7b5293;   /* Velvet Purple */
+  --color-secondary:  #d9c494;   /* Moon Sand    */
+  --color-accent1:    #edabf2;   /* Pink Mist     */
+  --color-accent2:    #bbedef;   /* Icy Blue      */
+  --color-base:       #fbe3f6;   /* Blush Milk    */
+  --color-bg:         #0d0a1e;   /* Deep Space    */
+  --color-surface:    rgba(255,255,255,0.04);
+  --color-border:     rgba(255,255,255,0.08);
+  --font-display:     'Syne', 'Space Grotesk', sans-serif;
+  --font-body:        'DM Sans', 'Inter', sans-serif;
+}
+
+/* ── Import Google Fonts ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,300&display=swap');
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-bg);
+  color: white;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 { font-family: var(--font-display); }
+
+/* ── Glassmorphism card ────────────────────────────────────────────────────── */
+.glass-card {
+  background: var(--color-surface);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--color-border);
+}
+
+/* ── Hover lift effect for cards ──────────────────────────────────────────── */
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(123, 82, 147, 0.35);
+  box-shadow: 0 20px 60px rgba(123, 82, 147, 0.15);
+}
+
+/* ── Glow button ──────────────────────────────────────────────────────────── */
+.btn-glow {
+  background: linear-gradient(135deg, var(--color-primary), #9b6ab3);
+  border: 1px solid rgba(237, 171, 242, 0.25);
+  box-shadow: 0 0 20px rgba(123, 82, 147, 0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: box-shadow 0.2s ease, transform 0.15s ease, filter 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.btn-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 40px rgba(123, 82, 147, 0.6), 0 0 80px rgba(123, 82, 147, 0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+.btn-glow:active { transform: translateY(0); }
+
+/* ── Stat card ────────────────────────────────────────────────────────────── */
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.stat-card:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 30px rgba(123, 82, 147, 0.2);
+}
+
+/* ── Ambient background orbs ─────────────────────────────────────────────── */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  animation: orb-drift 12s ease-in-out infinite alternate;
+}
+.orb:nth-child(2) { animation-delay: -4s; animation-duration: 16s; }
+.orb:nth-child(3) { animation-delay: -8s; animation-duration: 20s; }
+
+@keyframes orb-drift {
+  0%   { transform: translate(0,  0)  scale(1); }
+  50%  { transform: translate(40px, 30px) scale(1.05); }
+  100% { transform: translate(-20px, 50px) scale(0.95); }
+}
+
+/* ── Entrance animations ──────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in { animation: slide-in 0.35s ease both; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(123, 82, 147, 0.4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(123, 82, 147, 0.7); }
+
+/* ── Selection ────────────────────────────────────────────────────────────── */
+::selection { background: rgba(123, 82, 147, 0.4); }

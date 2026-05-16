@@ -9,3 +9,10 @@ result_prep.txt
 __pycache__/
 .ipynb_checkpoints/mosei_bottleneck.pkl.zip
 datasets/
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+back/.venv/
+back/venv/

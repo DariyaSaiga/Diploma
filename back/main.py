@@ -1,23 +1,3 @@
-"""
-main.py — Production FastAPI backend for Multimodal Emotion Recognition.
-
-Run with:
-    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
-
-Установка зависимостей для полного pipeline:
-    pip install opensmile feat faster-whisper
-    + ffmpeg: winget install ffmpeg
-
-Endpoints
-─────────
-GET  /health                        — liveness + model status
-POST /api/analyze/frame             — single base64 image → emotions (vision=zeros, честный режим)
-POST /api/analyze/audio             — аудиофайл → COVAREP через opensmile → emotions
-POST /api/analyze/multimodal        — полный ввод: текст + COVAREP CSV + OpenFace CSV → emotions
-POST /api/analyze/video             — видео → COVAREP + OpenFace AU + Whisper → полный инференс
-WS   /ws/camera                     — real-time base64 frame stream → emotions
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -372,8 +352,13 @@ async def analyze_frame(body: FrameRequest) -> EmotionResponse:
 
 # ── POST /api/analyze/audio ───────────────────────────────────────────────────
 ALLOWED_AUDIO_TYPES = {
-    "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4",
-    "audio/ogg", "audio/flac", "application/octet-stream",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/flac",
+    "audio/x-flac",
+    "application/octet-stream",
 }
 MAX_AUDIO_MB = 50
 
@@ -407,10 +392,11 @@ async def analyze_audio(file: UploadFile = File(...)) -> EmotionResponse:
         )
 
     # определяем расширение
-    suffix = ".wav"
+    suffix = ".mp4"
+
     if file.filename:
         ext = "." + file.filename.rsplit(".", 1)[-1].lower()
-        if ext in (".wav", ".mp3", ".flac", ".ogg", ".m4a"):
+        if ext in (".mp4", ".webm", ".mov"):
             suffix = ext
 
     def _process_sync() -> dict:
@@ -632,7 +618,13 @@ async def analyze_multimodal_csv(
 
 
 # ── POST /api/analyze/video ───────────────────────────────────────────────────
-ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime", "application/octet-stream"}
+ALLOWED_VIDEO_TYPES = {
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/x-quicktime",
+    "application/octet-stream",
+}
 MAX_VIDEO_MB = 100
 
 

@@ -1,23 +1,57 @@
-*.pkl
-*.h5
-*.hdf5
-*.pt
-*.pth
-result.txt
-result2.txt
-result_prep.txt
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
-.ipynb_checkpoints/mosei_bottleneck.pkl.zip
-datasets/
-# Python virtual environments
-.DS_Store
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
 env/
 ENV/
 back/.venv/
 back/venv/
+
+# ── Models / datasets / large files ──────────────────────────────────────────
+*.pkl
+*.h5
+*.hdf5
+*.pt
+*.pth
+datasets/
+mosei_emotion_aligned_60.pkl.zip
+.ipynb_checkpoints/mosei_bottleneck.pkl.zip
+
+# ── Video / audio files ───────────────────────────────────────────────────────
 *.mp4
 *.mov
 *.avi
 *.mkv
+*.webm
+*.wav
+*.mp3
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Node / frontend ───────────────────────────────────────────────────────────
+node_modules/
+.next/
+dist/
+build/
+
+# ── Logs / temp ───────────────────────────────────────────────────────────────
+*.log
+result.txt
+result2.txt
+result_prep.txt
+tmp/
+temp/

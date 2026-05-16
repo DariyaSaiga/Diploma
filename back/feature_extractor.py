@@ -24,7 +24,10 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Optional
+import os
 
+os.environ["TEMP"] = "C:/Temp"
+os.environ["TMP"] = "C:/Temp"
 import cv2
 import numpy as np
 import torch

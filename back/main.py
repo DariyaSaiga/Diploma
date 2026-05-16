@@ -67,7 +67,10 @@ from utils import (
     frames_to_tensors,
     temp_video_file,
 )
+import os
 
+os.environ["TEMP"] = "C:/Temp"
+os.environ["TMP"] = "C:/Temp"
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -567,21 +570,6 @@ async def analyze_multimodal_csv(
 ) -> EmotionResponse:
     t0 = time.perf_counter()
     modalities_used = {"text": False, "audio": False, "vision": False}
-
-    def _build_and_infer() -> dict:
-        input_ids, attention_mask = None, None
-        audio_tensor, vision_tensor = None, None
-
-        if text and text.strip():
-            input_ids, attention_mask = _tokenize(text.strip())
-            modalities_used["text"] = True
-
-        return model_loader.run_inference(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            audio=audio_tensor,
-            vision_feats=vision_tensor,
-        )
 
     # Читаем CSV файлы (async, перед executor)
     audio_bytes = await audio_csv.read() if audio_csv else None

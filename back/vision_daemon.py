@@ -42,7 +42,7 @@ def _extract(detector, video_path: str) -> np.ndarray:
         if total <= 0:
             raise ValueError(f"Не удалось прочитать видео: {video_path}")
 
-        for i, idx in enumerate(np.linspace(0, total - 1, 1, dtype=int)):
+        for i, idx in enumerate(np.linspace(0, total - 1, 8, dtype=int)):
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
             ok, frame = cap.read()
             if not ok:

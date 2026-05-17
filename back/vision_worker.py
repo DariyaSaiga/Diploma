@@ -82,7 +82,7 @@ def main() -> None:
             _err("Не удалось прочитать видео (total_frames=0)")
             sys.exit(1)
 
-        frame_indices = np.linspace(0, total_frames - 1, 1, dtype=int)
+        frame_indices = np.linspace(0, total_frames - 1, 15, dtype=int)
         tmp_dir = Path(tempfile.gettempdir())
 
         for i, idx in enumerate(frame_indices):

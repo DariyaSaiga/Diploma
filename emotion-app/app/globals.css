@@ -51,6 +51,31 @@ body {
 }
 .nav-links a:hover { opacity: 0.5; }
 
+/* Hamburger — hidden on desktop */
+.nav-burger {
+  display: none;
+  flex-direction: column; justify-content: center; gap: 5px;
+  width: 32px; height: 32px; background: none; border: none; cursor: pointer; padding: 4px;
+}
+.nav-burger span {
+  display: block; height: 2px; background: var(--black);
+  border-radius: 2px; transition: 0.2s;
+}
+
+/* Mobile dropdown */
+.nav-mobile {
+  position: fixed; top: 56px; left: 0; right: 0;
+  background: var(--white); border-bottom: 1px solid var(--gray-200);
+  display: flex; flex-direction: column; gap: 0; z-index: 99;
+}
+.nav-mobile a {
+  font-size: 14px; font-weight: 500; color: var(--black);
+  text-decoration: none; padding: 16px 24px;
+  border-top: 1px solid var(--gray-200);
+  transition: background 0.15s;
+}
+.nav-mobile a:hover { background: var(--gray-100); }
+
 /* ── BUTTONS ── */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -95,7 +120,7 @@ body {
 }
 .hero-title {
   font-family: var(--font-display);
-  font-size: clamp(36px, 6vw, 80px);
+  font-size: clamp(28px, 6vw, 80px);
   font-weight: 900;
   color: var(--white);
   letter-spacing: -0.03em;
@@ -107,7 +132,7 @@ body {
   font-size: 14px; max-width: 420px;
   line-height: 1.7; margin-bottom: 24px;
 }
-.hero-btns { display: flex; gap: 12px; }
+.hero-btns { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* ── STATS ── */
 .stats {
@@ -385,4 +410,121 @@ body {
   background: var(--gray-200);
   display: flex; align-items: center; justify-content: center;
   color: var(--gray-400); font-size: 12px; font-family: var(--font-body);
+  object-fit: cover;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESPONSIVE — MOBILE (≤ 768px)
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* Nav */
+  .nav { padding: 0 20px; }
+  .nav-links { display: none; }
+  .nav-burger { display: flex; }
+
+  /* Hero */
+  .hero { padding: 0 16px 32px; }
+  .hero-media { aspect-ratio: 4/5; }
+  .hero-overlay { padding: 24px 20px; }
+  .hero-sub { max-width: 100%; }
+  .hero-btns { flex-direction: column; }
+  .hero-btns .btn { width: 100%; justify-content: center; }
+
+  /* Stats — 2×2 grid */
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 24px 20px; gap: 0;
+  }
+  .stat { padding: 16px; }
+  .stat + .stat { border-left: none; }
+  .stat:nth-child(2) { border-left: 1px solid var(--gray-200); }
+  .stat:nth-child(3),
+  .stat:nth-child(4) { border-top: 1px solid var(--gray-200); }
+  .stat:nth-child(4) { border-left: 1px solid var(--gray-200); }
+  .stat-value { font-size: 28px; }
+
+  /* About — 1 column */
+  .about {
+    grid-template-columns: 1fr;
+    padding: 48px 20px;
+    gap: 40px;
+  }
+  .about-right { padding-left: 0; }
+
+  /* Events */
+  .events { padding: 48px 20px; }
+  .events-header { flex-direction: column; gap: 20px; }
+  .events-desc-right { text-align: left; align-items: flex-start; }
+  .event-row {
+    grid-template-columns: 1fr 40px;
+    gap: 12px;
+  }
+  .event-desc,
+  .event-date { display: none; }
+  .event-row:hover { margin: 0 -20px; padding: 20px; }
+
+  /* Reviews */
+  .reviews { padding: 48px 20px; }
+  .reviews-header { flex-direction: column; gap: 20px; align-items: flex-start; }
+  .reviews-grid { grid-template-columns: 1fr; }
+
+  /* Pricing */
+  .pricing { padding: 48px 20px; }
+  .pricing-grid { grid-template-columns: 1fr; }
+
+  /* FAQ */
+  .faq {
+    grid-template-columns: 1fr;
+    padding: 48px 20px;
+    gap: 40px;
+  }
+  .faq-right { padding-left: 0; }
+
+  /* Footer */
+  .footer { padding: 40px 20px 28px; }
+  .footer-top {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .footer-bottom { flex-direction: column; gap: 16px; align-items: flex-start; }
+  .footer-socials { flex-wrap: wrap; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESPONSIVE — TABLET (769px – 1024px)
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1024px) {
+
+  .nav { padding: 0 24px; }
+  .hero { padding: 0 24px 40px; }
+
+  /* Stats — still 4 col but compact */
+  .stats { padding: 28px 24px; }
+  .stat-value { font-size: 28px; }
+
+  /* About — keep 2 col, reduce padding */
+  .about { padding: 60px 24px; }
+  .about-right { padding-left: 32px; }
+
+  /* Events */
+  .events { padding: 60px 24px; }
+  .event-row { grid-template-columns: 2fr 2fr 1fr 40px; }
+
+  /* Reviews — 2 col on tablet */
+  .reviews { padding: 60px 24px; }
+  .reviews-grid { grid-template-columns: repeat(2, 1fr); }
+  .reviews-grid .review-card:last-child { grid-column: 1 / -1; max-width: 50%; margin: 0 auto; width: 100%; }
+
+  /* Pricing — 1 col on tablet */
+  .pricing { padding: 60px 24px; }
+  .pricing-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+
+  /* FAQ */
+  .faq { padding: 60px 24px; }
+  .faq-right { padding-left: 32px; }
+
+  /* Footer */
+  .footer { padding: 40px 24px 28px; }
+  .footer-top { grid-template-columns: 2fr 1fr 1fr; gap: 24px; }
 }

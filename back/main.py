@@ -67,10 +67,7 @@ from utils import (
     frames_to_tensors,
     temp_video_file,
 )
-import os
 
-os.environ["TEMP"] = "C:/Temp"
-os.environ["TMP"] = "C:/Temp"
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,

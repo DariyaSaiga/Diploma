@@ -1,0 +1,114 @@
+% ── BEFORE: Raw CMU-MOSEI HDF5 ───────────────────────────────
+\begin{table}[H]
+\centering
+\caption{CMU-MOSEI dataset statistics before preprocessing (raw HDF5 format).}
+\label{tab:before_preprocessing}
+\begin{tabular}{ll}
+\hline
+\textbf{Property} & \textbf{Value} \\
+\hline
+Format                        & HDF5 (.h5) \\
+Total segments                & 23,453 \\
+Splits                        & train / valid / test (fixed) \\
+\hline
+\multicolumn{2}{l}{\textit{Text modality}} \\
+\hline
+Field name                    & \texttt{words} \\
+Representation                & Raw byte strings (word tokens) \\
+Sequence length               & Variable (up to 50 words) \\
+Dimension per token           & — (not embedded) \\
+\hline
+\multicolumn{2}{l}{\textit{Audio modality}} \\
+\hline
+Field name                    & \texttt{COVAREP} \\
+Representation                & Float64 acoustic descriptors \\
+Sequence length               & Variable (up to 500+ frames) \\
+Dimension per frame           & 74 \\
+\hline
+\multicolumn{2}{l}{\textit{Visual modality}} \\
+\hline
+Field name                    & \texttt{OpenFace\_2} \\
+Representation                & Float64 facial action units \\
+Sequence length               & Variable \\
+Dimension per frame           & 713 (full feature set) \\
+\hline
+\multicolumn{2}{l}{\textit{Labels}} \\
+\hline
+Field name                    & \texttt{All Labels} \\
+Format                        & Float scores per emotion \\
+Emotions                      & happy, sad, anger, surprise, disgust, fear \\
+Samples with all-zero labels  & 3,013 (excluded) \\
+\hline
+\multicolumn{2}{l}{\textit{Emotion distribution (train split, raw)}} \\
+\hline
+Happy    & 10,752 positive samples (38\%) \\
+Sadness  & 5,601  positive samples (20\%) \\
+Anger    & 4,600  positive samples (16\%) \\
+Disgust  & 3,755  positive samples (13\%) \\
+Surprise & 2,055  positive samples (7\%) \\
+Fear     & 1,803  positive samples (6\%) \\
+\hline
+\end{tabular}
+\end{table}
+ 
+% ── AFTER: Preprocessed PKL ──────────────────────────────────
+\begin{table}[H]
+\centering
+\caption{Dataset statistics after preprocessing (stored as \texttt{.pkl}).}
+\label{tab:after_preprocessing}
+\begin{tabular}{ll}
+\hline
+\textbf{Property} & \textbf{Value} \\
+\hline
+Format                        & Python pickle (.pkl) \\
+\hline
+\multicolumn{2}{l}{\textit{Split sizes after all-zero filtering}} \\
+\hline
+Train                         & 13,934 samples \\
+Validation                    & 1,569  samples \\
+Test                          & 3,957  samples \\
+\hline
+\multicolumn{2}{l}{\textit{Text modality}} \\
+\hline
+Fields                        & \texttt{input\_ids}, \texttt{attention\_mask} \\
+Representation                & BERT-base-uncased tokenization \\
+Sequence length               & Fixed 50 tokens (padded / truncated) \\
+Dtype                         & int64 \\
+Shape per sample              & $[50]$ \\
+\hline
+\multicolumn{2}{l}{\textit{Audio modality}} \\
+\hline
+Field                         & \texttt{audio} \\
+Representation                & COVAREP, z-normalized, resampled \\
+Sequence length               & Fixed 60 frames \\
+Dimension per frame           & 74 \\
+Dtype                         & float32 \\
+Shape per sample              & $[60, 74]$ \\
+\hline
+\multicolumn{2}{l}{\textit{Visual modality}} \\
+\hline
+Field                         & \texttt{vision} \\
+Representation                & OpenFace AU subset, z-normalized \\
+Sequence length               & Fixed 60 frames \\
+Dimension per frame           & 35 \\
+Dtype                         & float32 \\
+Shape per sample              & $[60, 35]$ \\
+\hline
+\multicolumn{2}{l}{\textit{Labels}} \\
+\hline
+Field                         & \texttt{labels} \\
+Format                        & Binary float32 vector \\
+Shape per sample              & $[6]$ \\
+Threshold applied             & score $> 0$ → label = 1 \\
+\hline
+\multicolumn{2}{l}{\textit{Positive class weights (BCEWithLogitsLoss)}} \\
+\hline
+Happy    & 0.60 \\
+Sad      & 2.26 \\
+Anger    & 2.95 \\
+Surprise & 7.49 \\
+Disgust  & 3.72 \\
+Fear     & 9.47 \\
+\hline
+\end{tabular}
+\end{table}

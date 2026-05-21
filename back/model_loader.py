@@ -279,7 +279,7 @@ def run_inference(
         )
 
     # Для multiclass classification
-    probs = torch.sigmoid(logits_fuse)[0]
+    probs = torch.softmax(logits_fuse, dim=-1)[0]
 
     # tensor → numpy
     probs_np = probs.detach().cpu().float().numpy()

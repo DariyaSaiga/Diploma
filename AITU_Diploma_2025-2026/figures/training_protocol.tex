@@ -1,0 +1,40 @@
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}[
+    node distance=0.8cm and 0.75cm,
+    block/.style={
+        rectangle,
+        draw,
+        rounded corners=3pt,
+        align=center,
+        minimum width=2.4cm,
+        minimum height=0.9cm,
+        font=\small
+    },
+    arrow/.style={-Latex, thick}
+]
+
+\node[block] (data) {Filtered\\CMU-MOSEI};
+\node[block, right=of data] (split) {Train / Valid / Test\\standard split};
+\node[block, right=of split] (loss) {Weighted BCE\\+ auxiliary losses};
+\node[block, right=of loss] (optim) {AdamW\\cosine annealing};
+\node[block, right=of optim] (early) {Early stopping\\validation Macro-F1};
+\node[block, right=of early] (test) {Test evaluation\\Macro-F1 + Avg.WA};
+
+\node[block, below=1.2cm of early] (threshold) {Per-class threshold tuning\\on validation set};
+
+\draw[arrow] (data) -- (split);
+\draw[arrow] (split) -- (loss);
+\draw[arrow] (loss) -- (optim);
+\draw[arrow] (optim) -- (early);
+\draw[arrow] (early) -- (test);
+
+\draw[arrow] (early) -- (threshold);
+\draw[arrow] (threshold) -| (test);
+
+\end{tikzpicture}
+}
+\caption{Training and evaluation protocol used in the experimental study.}
+\label{fig:training_protocol}
+\end{figure}

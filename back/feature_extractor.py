@@ -1,18 +1,40 @@
+"""
+feature_extractor.py
+══════════════════════════════════════════════════════════════════════════════
+Pipeline: видеофайл → COVAREP (74-dim) + OpenFace AU (35-dim) + BERT текст
+→ BottleneckFusionModel → предсказание эмоции.
+
+Установка зависимостей:
+    pip install opensmile feat faster-whisper opencv-python
+
+Использование:
+    from feature_extractor import VideoEmotionPipeline
+    pipe = VideoEmotionPipeline()
+    result = pipe.predict("video.mp4")
+    print(result)
+══════════════════════════════════════════════════════════════════════════════
+"""
+
 from __future__ import annotations
 
-import json
 import logging
-import queue
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
-import time
 import uuid
 from pathlib import Path
 from typing import Optional
+import os
+import platform
 
+if platform.system() == "Windows":
+    _tmp = "C:/Temp"
+    os.makedirs(_tmp, exist_ok=True)
+    os.environ["TEMP"] = _tmp
+    os.environ["TMP"] = _tmp
+
+import cv2
 import numpy as np
 import torch
 from transformers import BertTokenizer
@@ -69,9 +91,10 @@ def extract_audio_from_video(video_path: str, out_wav: str) -> bool:
         logger.error("ffmpeg timeout")
         return False
     
+
 def compress_video_for_inference(video_path: str, out_path: str) -> bool:
     """
-    Конвертирует любое видео (.mov/.mp4/.webm) в маленький mp4 для быстрого vision extraction.
+    Конвертирует любое видео (.mov/.mp4) в маленький mp4 для быстрого vision extraction.
     Audio не нужен, потому что audio извлекается из оригинального видео.
     """
     try:
@@ -99,12 +122,11 @@ def compress_video_for_inference(video_path: str, out_path: str) -> bool:
             logger.info("✅ Fast video created for vision: %s", out_path)
         return ok
 
-    except subprocess.TimeoutExpired:
-        logger.error("ffmpeg compress timeout")
-        return False
     except Exception as e:
         logger.error("Ошибка сжатия видео: %s", e)
         return False
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # БЛОК 2: COVAREP признаки через opensmile
@@ -186,7 +208,7 @@ def extract_covarep_features(wav_path: str) -> Optional[np.ndarray]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# БЛОК 3: OpenFace AU признаки через py-feat (persistent daemon subprocess)
+# БЛОК 3: OpenFace AU признаки через py-feat (daemon subprocess)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Detector() загружается ОДИН РАЗ при старте daemon.
@@ -195,9 +217,14 @@ def extract_covarep_features(wav_path: str) -> Optional[np.ndarray]:
 # Inference timeout 45 сек: если detect_image завис — daemon убивается,
 # при следующем запросе стартует заново.
 
+import sys
+import json
+import queue
+import time
+
 _VISION_DAEMON_SCRIPT   = Path(__file__).parent / "vision_daemon.py"
-_DAEMON_STARTUP_TIMEOUT = 180   # сек ожидания загрузки моделей
-_INFERENCE_TIMEOUT      = 45    # сек на один detect_image вызов
+_DAEMON_STARTUP_TIMEOUT = 180
+_INFERENCE_TIMEOUT      = 90
 
 _daemon_proc: Optional[subprocess.Popen] = None
 _daemon_lock = threading.Lock()
@@ -208,7 +235,7 @@ def _readline_with_timeout(proc: subprocess.Popen, timeout: float) -> Optional[s
 
     def _read():
         try:
-            q.put(proc.stdout.readline())  # type: ignore[union-attr]
+            q.put(proc.stdout.readline())
         except Exception:
             q.put(None)
 
@@ -239,6 +266,11 @@ def _start_daemon() -> bool:
         return False
 
     logger.info("Запускаю py-feat daemon (загрузка моделей ~60-120 сек при первом запуске)...")
+    daemon_env = os.environ.copy()
+    # Disable XGBoost/OpenMP parallelism — prevents deadlock on macOS
+    daemon_env["OMP_NUM_THREADS"] = "1"
+    daemon_env["OPENBLAS_NUM_THREADS"] = "1"
+    daemon_env["MKL_NUM_THREADS"] = "1"
     try:
         _daemon_proc = subprocess.Popen(
             [sys.executable, str(_VISION_DAEMON_SCRIPT)],
@@ -247,6 +279,7 @@ def _start_daemon() -> bool:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=daemon_env,
         )
     except Exception as exc:
         logger.error("Не удалось запустить vision_daemon: %s", exc)
@@ -287,9 +320,8 @@ def _start_daemon() -> bool:
 
 def extract_openface_features(video_path: str) -> Optional[np.ndarray]:
     """
-    Извлечь OpenFace AU признаки через долгоживущий py-feat daemon.
-    Daemon стартует один раз, принимает видео-пути через stdin.
-    При зависании убивается и перезапускается на следующем запросе.
+    Извлечь OpenFace AU признаки через долгоживущий py-feat daemon subprocess.
+    При зависании daemon убивается и перезапускается на следующем запросе.
     """
     global _daemon_proc
 
@@ -300,9 +332,8 @@ def extract_openface_features(video_path: str) -> Optional[np.ndarray]:
                 return None
 
         try:
-            assert _daemon_proc is not None
-            _daemon_proc.stdin.write(video_path + "\n")  # type: ignore[union-attr]
-            _daemon_proc.stdin.flush()                    # type: ignore[union-attr]
+            _daemon_proc.stdin.write(video_path + "\n")
+            _daemon_proc.stdin.flush()
         except BrokenPipeError:
             logger.error("vision_daemon pipe сломан")
             _kill_daemon()
@@ -311,10 +342,7 @@ def extract_openface_features(video_path: str) -> Optional[np.ndarray]:
         line = _readline_with_timeout(_daemon_proc, _INFERENCE_TIMEOUT)
 
         if line is None:
-            logger.error(
-                "vision_daemon inference timeout (>%ds) — убиваю, vision=zeros",
-                _INFERENCE_TIMEOUT,
-            )
+            logger.error("vision_daemon inference timeout (>%ds) — убиваю", _INFERENCE_TIMEOUT)
             _kill_daemon()
             return None
 
@@ -332,16 +360,15 @@ def extract_openface_features(video_path: str) -> Optional[np.ndarray]:
 
         if data.get("status") != "ok":
             logger.error("vision_daemon ошибка: %s", data.get("message", "неизвестно"))
-            # Убиваем daemon — он мог остаться в плохом состоянии
             _kill_daemon()
             return None
 
         arr = np.array(data["features"], dtype=np.float32)
         logger.info("✅ Vision (daemon): shape=%s", arr.shape)
 
-        # Убиваем daemon сразу после успеха:
-        # py-feat зависает при ВТОРОМ вызове detect_image() в одном процессе.
-        # Следующий запрос запустит daemon заново (~8 сек из кеша) — чисто и стабильно.
+        # py-feat зависает при ВТОРОМ вызове detect_image() в одном процессе —
+        # убиваем daemon после каждого успешного запроса, следующий запрос
+        # поднимет его заново (~8 сек из кеша).
         _kill_daemon()
 
         return arr
@@ -362,10 +389,34 @@ def transcribe_audio(wav_path: str) -> Optional[str]:
     try:
         from faster_whisper import WhisperModel
 
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
-        segments, info = model.transcribe(wav_path, language="en")
-        text = " ".join(seg.text.strip() for seg in segments)
-        logger.info("Whisper транскрипция: '%s'", text[:100])
+        model = WhisperModel("small", device="cpu", compute_type="int8")
+        # Step 1: detect language
+        segments_detect, info = model.transcribe(wav_path, language=None, vad_filter=True,
+                                                  condition_on_previous_text=False, beam_size=5,
+                                                  no_speech_threshold=0.6, log_prob_threshold=-1.0)
+        detected_lang = info.language
+        lang_prob = info.language_probability
+
+        # Step 2: if non-English → translate to English so BERT understands
+        # BERT (bert-base-uncased) is English-only, model trained on English CMU-MOSEI
+        if detected_lang != "en":
+            logger.info("Whisper: язык '%s' (%.0f%%) → переводим на английский", detected_lang, lang_prob * 100)
+            segments_final, _ = model.transcribe(
+                wav_path,
+                language=detected_lang,
+                task="translate",          # Whisper переводит на английский
+                vad_filter=True,
+                condition_on_previous_text=False,
+                beam_size=5,
+                no_speech_threshold=0.6,
+                log_prob_threshold=-1.0,
+            )
+        else:
+            segments_final = segments_detect
+
+        good_segments = [s for s in segments_final if s.no_speech_prob < 0.5]
+        text = " ".join(s.text.strip() for s in good_segments)
+        logger.info("Whisper [%s→en %.0f%%]: '%s'", detected_lang, lang_prob * 100, text[:100])
         return text if text.strip() else None
 
     except ImportError:
@@ -472,15 +523,13 @@ class VideoEmotionPipeline:
         tmp_dir = Path(tempfile.gettempdir())
         uid = uuid.uuid4().hex
         tmp_wav = str(tmp_dir / f"emotion_{uid}.wav")
-        tmp_video_fast = tmp_dir / f"emotion_fast_{uid}.mp4"
+        tmp_video_fast = str(tmp_dir / f"emotion_fast_{uid}.mp4")
 
         try:
             # ── Шаг 1: извлечь аудио ─────────────────────────────────────────
             audio_ok = extract_audio_from_video(video_path, tmp_wav)
-
-            tmp_video_fast = tmp_dir / f"emotion_fast_{uid}.mp4"
-            fast_ok = compress_video_for_inference(video_path, str(tmp_video_fast))
-            vision_source = str(tmp_video_fast) if fast_ok else video_path
+            video_fast_ok = compress_video_for_inference(video_path, tmp_video_fast)
+            vision_source = tmp_video_fast if video_fast_ok else video_path
 
             # ── Шаг 2: COVAREP признаки ───────────────────────────────────────
             audio_tensor = None
@@ -574,10 +623,21 @@ def extract_all_features(
     """
     Принять байты видеофайла, вернуть словарь с тензорами для run_inference().
 
-    Используется в FastAPI endpoint /api/analyze/video.
-    Поддерживает .mp4, .mov, .webm.
-    Для vision создаётся сжатый временный .mp4, чтобы py-feat работал быстрее и стабильнее.
-    Audio извлекается из оригинального файла, чтобы не терять звук.
+    Использование в main.py:
+        features = extract_all_features(video_bytes, suffix=".mp4")
+        result = model_loader.run_inference(**features["inference_kwargs"])
+
+    Возвращает:
+    {
+        "inference_kwargs": {
+            "input_ids": Tensor | None,
+            "attention_mask": Tensor | None,
+            "audio": Tensor | None,
+            "vision_feats": Tensor | None,
+        },
+        "modalities_used": {"text": bool, "audio": bool, "vision": bool},
+        "transcript": str | None,
+    }
     """
     if device is None:
         from config import DEVICE
@@ -585,75 +645,44 @@ def extract_all_features(
 
     tmp_dir = Path(tempfile.gettempdir())
     uid = uuid.uuid4().hex
-
-    # Нормализуем расширение входного файла
-    suffix = suffix.lower()
-    if suffix not in [".mp4", ".mov", ".webm"]:
-        suffix = ".mp4"
-
     tmp_video = tmp_dir / f"emotion_video_{uid}{suffix}"
-    tmp_wav = tmp_dir / f"emotion_audio_{uid}.wav"
+    tmp_wav   = tmp_dir / f"emotion_audio_{uid}.wav"
     tmp_video_fast = tmp_dir / f"emotion_fast_{uid}.mp4"
 
     modalities_used = {"text": False, "audio": False, "vision": False}
     transcript = None
-
-    input_ids = None
-    attention_mask = None
-    audio_tensor = None
-    vision_tensor = None
+    input_ids = attention_mask = audio_tensor = vision_tensor = None
 
     try:
-        # 1. Сохраняем оригинальное загруженное видео
         tmp_video.write_bytes(video_bytes)
 
-        # 2. Audio берём из оригинального видео
+        # Аудио
         audio_ok = extract_audio_from_video(str(tmp_video), str(tmp_wav))
-
+        video_fast_ok = compress_video_for_inference(str(tmp_video), str(tmp_video_fast))
+        vision_source = str(tmp_video_fast) if video_fast_ok else str(tmp_video)
         if audio_ok:
             audio_arr = extract_covarep_features(str(tmp_wav))
             if audio_arr is not None:
                 audio_tensor = torch.from_numpy(audio_arr).unsqueeze(0).to(device)
                 modalities_used["audio"] = True
-                logger.info("✅ Audio: COVAREP [%s]", tuple(audio_tensor.shape))
-            else:
-                logger.warning("⚠️  COVAREP извлечение не удалось — audio=zeros")
-        else:
-            logger.warning("⚠️  Аудио не извлечено из видео — audio=zeros")
 
-        # 3. Vision берём НЕ из оригинала, а из сжатого fast mp4
-        fast_ok = compress_video_for_inference(str(tmp_video), str(tmp_video_fast))
-        vision_source = str(tmp_video_fast) if fast_ok else str(tmp_video)
-
-        if fast_ok:
-            logger.info("✅ Fast video created for vision: %s", vision_source)
-        else:
-            logger.warning("⚠️  Fast video не создан — используем оригинальное видео для vision")
-
+        # Vision
         vision_arr = extract_openface_features(vision_source)
         if vision_arr is not None:
             vision_tensor = torch.from_numpy(vision_arr).unsqueeze(0).to(device)
             modalities_used["vision"] = True
-            logger.info("✅ Vision: OpenFace AU [%s]", tuple(vision_tensor.shape))
-        else:
-            logger.warning("⚠️  OpenFace AU извлечение не удалось — vision=zeros")
 
-        # 4. Text: либо ручной text_override, либо Whisper из оригинального audio
+        # Текст
         if text_override:
             transcript = text_override
-            logger.info("Текст override: '%s'", transcript[:80])
         elif audio_ok:
             transcript = transcribe_audio(str(tmp_wav))
 
         if transcript and transcript.strip():
             input_ids, attention_mask = tokenize_text(transcript, device)
             modalities_used["text"] = True
-            logger.info("✅ Text: BERT токенизирован ('%s...')", transcript[:50])
-        else:
-            logger.warning("⚠️  Текст отсутствует — text branch=zeros")
 
     finally:
-        # 5. Удаляем временные файлы
         tmp_video.unlink(missing_ok=True)
         tmp_wav.unlink(missing_ok=True)
         tmp_video_fast.unlink(missing_ok=True)

@@ -1,0 +1,374 @@
+% File:    the University of Southampton Thesis Template
+% Author:  Tengxiang Li
+%
+% Warns for incorrect (obsolete) LaTeX usage
+\RequirePackage[l2tabu]{nag}
+
+\documentclass[a4paper,12pt,oneside,openbib,oldfontcommands]{memoir}
+
+% -------------------------------------------------------------------------
+% Encoding and languages
+% -------------------------------------------------------------------------
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% IMPORTANT:
+% Overleaf pdfLaTeX may not support "kazakh" in babel.
+% Russian is used for Cyrillic support, English is the main language.
+\usepackage[main=english,russian]{babel}
+
+% -------------------------------------------------------------------------
+% Basic packages
+% -------------------------------------------------------------------------
+\usepackage{datetime}
+\usepackage{ifpdf}
+\usepackage{microtype}
+\usepackage{import}
+
+\usepackage{amsfonts}
+\usepackage{amsmath}
+
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{newlfont}
+\usepackage{layouts}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[square,numbers,sort&compress]{natbib}
+\usepackage{url}
+\usepackage{enumerate}
+\usepackage{footnote}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{arydshln}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{lipsum}
+\usepackage{subcaption}
+
+% -------------------------------------------------------------------------
+% Colors and TikZ
+% -------------------------------------------------------------------------
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\usetikzlibrary{
+    shapes.geometric,
+    arrows.meta,
+    positioning,
+    fit,
+    backgrounds,
+    shadows.blur,
+    calc
+}
+
+% -------------------------------------------------------------------------
+% Hyperlinks
+% -------------------------------------------------------------------------
+\usepackage[colorlinks=true,allcolors=black]{hyperref}
+\usepackage{memhfixc}
+
+% -------------------------------------------------------------------------
+% PDF metadata
+% -------------------------------------------------------------------------
+\let\ordinal\relax
+
+\ifpdf
+\pdfinfo{
+   /Author (Author name)
+   /Title (Thesis title)
+   /Keywords (One; Two; Three)
+   /CreationDate (D:\pdfdate)
+}
+\fi
+
+% -------------------------------------------------------------------------
+% Draft watermark
+% -------------------------------------------------------------------------
+\ifdraftdoc
+    \usepackage{draftwatermark}
+    \SetWatermarkScale{0.3}
+    \SetWatermarkText{\bf Draft: \today}
+\fi
+
+\sloppy
+
+% -------------------------------------------------------------------------
+% Page layout
+% -------------------------------------------------------------------------
+\settrimmedsize{297mm}{210mm}{*}
+\setlength{\trimtop}{0pt}
+\setlength{\trimedge}{\stockwidth}
+\addtolength{\trimedge}{-\paperwidth}
+\settypeblocksize{634pt}{448.13pt}{*}
+\setulmargins{4cm}{*}{*}
+\setlrmargins{*}{*}{1.5}
+\setmarginnotes{17pt}{51pt}{\onelineskip}
+\setheadfoot{\onelineskip}{2\onelineskip}
+\setheaderspaces{*}{2\onelineskip}{*}
+\checkandfixthelayout
+
+\frenchspacing
+\OnehalfSpacing
+
+% -------------------------------------------------------------------------
+% Section numbering
+% -------------------------------------------------------------------------
+\setsecnumdepth{subsection}
+\maxsecnumdepth{subsubsection}
+
+% -------------------------------------------------------------------------
+% Page style
+% -------------------------------------------------------------------------
+\makepagestyle{myvf}
+\makeoddfoot{myvf}{}{\thepage}{}
+\makeevenfoot{myvf}{}{\thepage}{}
+\makeheadrule{myvf}{\textwidth}{\normalrulethickness}
+\makeevenhead{myvf}{\small\textsc{\leftmark}}{}{}
+\makeoddhead{myvf}{}{}{\small\textsc{\rightmark}}
+\pagestyle{myvf}
+
+\newcommand{\clearemptydoublepage}{\newpage{\thispagestyle{empty}\cleardoublepage}}
+
+% -------------------------------------------------------------------------
+% Index
+% -------------------------------------------------------------------------
+\makeindex
+
+% -------------------------------------------------------------------------
+% Custom commands
+% -------------------------------------------------------------------------
+\newcommand{\keywords}[1]{\par\noindent{\small{\bf Keywords:} #1}}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+% -------------------------------------------------------------------------
+% Diagram colors and styles
+% -------------------------------------------------------------------------
+\definecolor{colText}{RGB}{52, 101, 164}
+\definecolor{colAudio}{RGB}{198, 122, 48}
+\definecolor{colVision}{RGB}{74, 153, 90}
+\definecolor{colBottle}{RGB}{153, 63, 153}
+\definecolor{colFuse}{RGB}{210, 60, 60}
+\definecolor{colBg}{RGB}{245, 247, 250}
+\definecolor{colLoss}{RGB}{80, 80, 80}
+\definecolor{colArrow}{RGB}{100, 100, 100}
+\definecolor{UniversityBlue}{RGB}{38,90,130}
+
+\tikzset{
+    base/.style={
+        rectangle,
+        rounded corners=4pt,
+        minimum width=2.2cm,
+        minimum height=0.55cm,
+        font=\footnotesize\sffamily,
+        text centered,
+        inner sep=4pt,
+        line width=0.6pt
+    },
+    tblock/.style={
+        base,
+        fill=colText!18,
+        draw=colText!70
+    },
+    ablock/.style={
+        base,
+        fill=colAudio!18,
+        draw=colAudio!70
+    },
+    vblock/.style={
+        base,
+        fill=colVision!18,
+        draw=colVision!70
+    },
+    bblock/.style={
+        base,
+        fill=colBottle!18,
+        draw=colBottle!70,
+        minimum width=1.6cm
+    },
+    fblock/.style={
+        base,
+        fill=colFuse!15,
+        draw=colFuse!70,
+        minimum width=2.6cm
+    },
+    lblock/.style={
+        base,
+        fill=colLoss!12,
+        draw=colLoss!50,
+        minimum width=1.8cm,
+        font=\scriptsize\sffamily
+    },
+    iblock/.style={
+        base,
+        fill=white,
+        draw=colArrow!60,
+        minimum width=2.2cm,
+        minimum height=0.5cm,
+        font=\scriptsize\sffamily
+    },
+    arr/.style={
+        -{Stealth[length=4pt]},
+        line width=0.7pt,
+        color=colArrow
+    },
+    tarrT/.style={
+        arr,
+        color=colText!80
+    },
+    tarrA/.style={
+        arr,
+        color=colAudio!80
+    },
+    tarrV/.style={
+        arr,
+        color=colVision!80
+    },
+    tarrB/.style={
+        arr,
+        color=colBottle!80
+    },
+    tarrF/.style={
+        arr,
+        color=colFuse!80
+    },
+    secbox/.style args={#1}{
+        rectangle,
+        rounded corners=6pt,
+        draw=#1!50,
+        fill=#1!6,
+        line width=0.8pt,
+        dashed,
+        inner sep=8pt
+    },
+    seclabel/.style args={#1}{
+        font=\scriptsize\sffamily\bfseries,
+        text=#1!80
+    }
+}
+
+% -------------------------------------------------------------------------
+% Listings
+% -------------------------------------------------------------------------
+\usepackage{listings}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  numberstyle=\tiny,
+  numbersep=6pt,
+  breaklines=true,
+  showstringspaces=false,
+  keepspaces=true,
+  columns=fullflexible,
+  backgroundcolor=\color{white},
+  keywordstyle=\color{black},
+  commentstyle=\color{black},
+  stringstyle=\color{black}
+}
+
+% -------------------------------------------------------------------------
+% Reduce widows and orphans
+% -------------------------------------------------------------------------
+\widowpenalty=1000
+\clubpenalty=1000
+
+% -------------------------------------------------------------------------
+% Theorem styles
+% -------------------------------------------------------------------------
+\theoremstyle{plain}
+\newtheorem{theo}{Theorem}[chapter]
+
+\theoremstyle{plain}
+\newtheorem{prop}{Proposition}[chapter]
+
+\theoremstyle{definition}
+\newtheorem{dfn}{Definition}[chapter]
+
+\theoremstyle{plain}
+\newtheorem{lema}{Lemma}[chapter]
+
+\theoremstyle{plain}
+\newtheorem{cor}{Corollary}[chapter]
+
+\theoremstyle{plain}
+\newtheorem{resu}{Result}[chapter]
+
+% -------------------------------------------------------------------------
+% Document
+% -------------------------------------------------------------------------
+\begin{document}
+
+\frontmatter
+\pagenumbering{roman}
+
+%\input{frontmatter/title}
+
+\input{frontmatter/abstract}
+\clearemptydoublepage
+
+%\input{frontmatter/dedication}
+
+%\input{frontmatter/declaration}
+
+%\input{frontmatter/definitions}
+%\input{frontmatter/dda}
+
+%\listoftables
+%\addtocontents{lot}{\par\nobreak\textbf{{\scshape Table} \hfill Page}\par\nobreak}
+%\newpage
+
+%\listoffigures
+%\addtocontents{lof}{\par\nobreak\textbf{{\scshape Figure} \hfill Page}\par\nobreak}
+%\newpage
+
+\addtocontents{toc}{\par\nobreak \mbox{}\hfill{\bf }\par\nobreak}
+
+\renewcommand{\contentsname}{Table of Contents}
+\maxtocdepth{subsection}
+\tableofcontents*
+
+% -------------------------------------------------------------------------
+% Main matter
+% -------------------------------------------------------------------------
+\mainmatter
+
+\input{chapters/introduction}
+\clearemptydoublepage
+
+\input{chapters/literature_review}
+\clearemptydoublepage
+
+\input{chapters/methodology}
+\clearemptydoublepage
+
+\input{chapters/system_design}
+\clearemptydoublepage
+
+\input{chapters/results_and_evaluation}
+\clearemptydoublepage
+
+\input{chapters/discussion}
+\clearemptydoublepage
+
+\input{chapters/conclusion}
+\clearemptydoublepage
+
+% -------------------------------------------------------------------------
+% Bibliography
+% -------------------------------------------------------------------------
+\backmatter
+\refstepcounter{chapter}
+\bibliographystyle{apalike}
+\bibliography{thesisbiblio}
+
+% -------------------------------------------------------------------------
+% Appendix
+% -------------------------------------------------------------------------
+%\appendix
+%\import{chapters/appendices/}{app0A.tex}
+%\clearemptydoublepage
+
+\end{document}

@@ -1,3 +1,23 @@
+"""
+main.py — Production FastAPI backend for Multimodal Emotion Recognition.
+
+Run with:
+    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+
+Установка зависимостей для полного pipeline:
+    pip install opensmile feat faster-whisper
+    + ffmpeg: winget install ffmpeg
+
+Endpoints
+─────────
+GET  /health                        — liveness + model status
+POST /api/analyze/frame             — single base64 image → emotions (vision=zeros, честный режим)
+POST /api/analyze/audio             — аудиофайл → COVAREP через opensmile → emotions
+POST /api/analyze/multimodal        — полный ввод: текст + COVAREP CSV + OpenFace CSV → emotions
+POST /api/analyze/video             — видео → COVAREP + OpenFace AU + Whisper → полный инференс
+WS   /ws/camera                     — real-time base64 frame stream → emotions
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,12 +26,8 @@ import logging
 import sys
 import time
 import traceback
-from collections import deque
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
-
-# История сессии — последние 5 результатов в памяти
-_session_history: deque = deque(maxlen=5)
 
 import numpy as np
 import torch
@@ -32,7 +48,7 @@ from pydantic import BaseModel, Field, field_validator
 from transformers import BertTokenizer
 
 import model_loader
-from feature_extractor import extract_all_features, transcribe_audio, tokenize_text
+from feature_extractor import extract_all_features
 from config import (
     API_VERSION,
     AUDIO_FEAT_DIM,
@@ -356,27 +372,12 @@ async def analyze_frame(body: FrameRequest) -> EmotionResponse:
 
 
 # ── POST /api/analyze/audio ───────────────────────────────────────────────────
-# Принимаем любой audio/* тип + бинарный поток.
-# ffmpeg справится с форматом сам — жёсткая проверка только отсекает явно не то.
-_REJECTED_TYPES = {"text/", "image/", "application/pdf", "application/json"}
-
-def _is_acceptable_audio(ct: Optional[str]) -> bool:
-    if not ct:
-        return True   # нет заголовка — пробуем обработать
-    ct = ct.lower().split(";")[0].strip()
-    if any(ct.startswith(r) for r in _REJECTED_TYPES):
-        return False
-    return True       # audio/*, video/* (некоторые устройства шлют видео-тип для аудио), application/octet-stream, etc.
-
-def _is_acceptable_video(ct: Optional[str]) -> bool:
-    if not ct:
-        return True
-    ct = ct.lower().split(";")[0].strip()
-    if any(ct.startswith(r) for r in _REJECTED_TYPES):
-        return False
-    return True
-
-MAX_AUDIO_MB = 100   # 100 MB — с запасом для длинных записей
+ALLOWED_AUDIO_TYPES = {
+    "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4",
+    "audio/ogg", "audio/flac", "application/octet-stream",
+    "audio/x-m4a", "audio/m4a", "audio/aac",
+}
+MAX_AUDIO_MB = 50
 
 
 @app.post(
@@ -393,10 +394,10 @@ MAX_AUDIO_MB = 100   # 100 MB — с запасом для длинных зап
 async def analyze_audio(file: UploadFile = File(...)) -> EmotionResponse:
     t0 = time.perf_counter()
 
-    if not _is_acceptable_audio(file.content_type):
+    if file.content_type and file.content_type not in ALLOWED_AUDIO_TYPES:
         raise HTTPException(
             status_code=415,
-            detail=f"Неподдерживаемый тип файла: {file.content_type}. Загрузи аудиофайл (WAV, MP3, M4A, FLAC, OGG, AAC).",
+            detail=f"Неподдерживаемый тип: {file.content_type}. Используй WAV, MP3, M4A, FLAC или OGG.",
         )
 
     data = await file.read()
@@ -407,70 +408,76 @@ async def analyze_audio(file: UploadFile = File(...)) -> EmotionResponse:
             detail=f"Файл слишком большой ({size_mb:.1f} MB). Максимум {MAX_AUDIO_MB} MB.",
         )
 
-    # Определяем расширение по имени файла (надёжнее чем content-type)
-    _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".webm", ".mp4", ".mov"}
+    # определяем расширение
     suffix = ".wav"
-    if file.filename and "." in file.filename:
+    if file.filename:
         ext = "." + file.filename.rsplit(".", 1)[-1].lower()
-        suffix = ext if ext in _AUDIO_EXTS else ".wav"
+        if ext in (".wav", ".mp3", ".flac", ".ogg", ".m4a"):
+            suffix = ext
 
     def _process_sync() -> dict:
-        import tempfile, uuid, subprocess
+        import tempfile, uuid
         from pathlib import Path
 
-        uid = uuid.uuid4().hex
-        tmp = Path(tempfile.gettempdir()) / f"emotion_audio_{uid}{suffix}"
-        tmp_wav = Path(tempfile.gettempdir()) / f"emotion_audio_{uid}.wav"
+        tmp = Path(tempfile.gettempdir()) / f"emotion_audio_{uuid.uuid4().hex}{suffix}"
+        wav_tmp = Path(tempfile.gettempdir()) / f"emotion_audio_{uuid.uuid4().hex}.wav"
+        transcript_text = None
+        modalities = {"text": False, "audio": False, "vision": False}
+
         try:
             tmp.write_bytes(data)
 
-            # ── Конвертируем в WAV через ffmpeg ──────────────────────────────
-            # WAV-заголовок содержит sample rate, audiofile читает его без
-            # mediainfo/soxi. Параллельно получаем файл для Whisper.
-            if suffix != ".wav":
-                conv = subprocess.run(
-                    ["ffmpeg", "-y", "-i", str(tmp),
-                     "-ar", "16000", "-ac", "1", "-vn",
-                     str(tmp_wav)],
-                    capture_output=True,
-                    timeout=60,
-                )
-                if conv.returncode == 0 and tmp_wav.exists() and tmp_wav.stat().st_size > 0:
-                    audio_path = str(tmp_wav)
-                    logger.info("Audio converted to WAV: %s", tmp_wav.name)
-                else:
-                    stderr = conv.stderr.decode(errors="replace")[-300:]
-                    logger.warning("ffmpeg audio conversion failed (rc=%d): %s", conv.returncode, stderr)
-                    audio_path = str(tmp)
-            else:
-                # уже WAV — просто копируем чтобы tmp_wav существовал для Whisper
-                import shutil as _shutil
-                _shutil.copy2(str(tmp), str(tmp_wav))
-                audio_path = str(tmp_wav)
+            # Конвертируем в WAV если нужно (для Whisper и opensmile)
+            import subprocess as sp
+            wav_path = str(wav_tmp)
+            conv = sp.run(
+                ["ffmpeg", "-y", "-i", str(tmp), "-ar", "16000", "-ac", "1", "-vn", wav_path],
+                capture_output=True, timeout=60,
+            )
+            audio_path = wav_path if (wav_tmp.exists() and wav_tmp.stat().st_size > 0) else str(tmp)
 
-            # ── COVAREP признаки (аудио ветка) ───────────────────────────────
+            # Извлекаем COVAREP признаки
             audio_tensor = _extract_covarep(audio_path)
+            modalities["audio"] = True
 
-            # ── Whisper транскрипция (текстовая ветка) ────────────────────────
-            transcript = transcribe_audio(audio_path)
+            # Транскрипция через Whisper
             input_ids, attention_mask = None, None
-            if transcript and transcript.strip():
-                input_ids, attention_mask = tokenize_text(transcript, DEVICE)
-                logger.info("✅ Transcript: '%s'", transcript[:80])
-            else:
-                logger.warning("⚠️  Whisper не дал транскрипцию — text branch=zeros")
+            try:
+                from faster_whisper import WhisperModel
+                wm = WhisperModel("small", device="cpu", compute_type="int8")
+                _segs, info = wm.transcribe(audio_path, language=None, vad_filter=True,
+                                            condition_on_previous_text=False, beam_size=5,
+                                            no_speech_threshold=0.6, log_prob_threshold=-1.0)
+                detected_lang = info.language
+                if detected_lang != "en":
+                    logger.info("Whisper: '%s' → переводим на английский", detected_lang)
+                    _segs, _ = wm.transcribe(audio_path, language=detected_lang, task="translate",
+                                             vad_filter=True, condition_on_previous_text=False,
+                                             beam_size=5, no_speech_threshold=0.6, log_prob_threshold=-1.0)
+                good_segs = [s for s in _segs if s.no_speech_prob < 0.5]
+                transcript_text = " ".join(s.text.strip() for s in good_segs).strip()
+                if transcript_text:
+                    logger.info("Whisper [%s→en %.0f%%]: %s", detected_lang, info.language_probability * 100, transcript_text)
+                    input_ids, attention_mask = _tokenize(transcript_text)
+                    modalities["text"] = True
+                else:
+                    logger.warning("Whisper вернул пустую транскрипцию")
+            except ImportError:
+                logger.warning("faster-whisper не установлен — text branch будет zeros")
+            except Exception as exc:
+                logger.warning("Whisper ошибка: %s", exc)
 
             result = model_loader.run_inference(
                 audio=audio_tensor,
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             )
-            result["transcript"] = transcript
-            result["text_active"] = bool(input_ids is not None)
+            result["transcript"] = transcript_text
+            result["modalities"] = modalities
             return result
         finally:
             tmp.unlink(missing_ok=True)
-            tmp_wav.unlink(missing_ok=True)
+            wav_tmp.unlink(missing_ok=True)
 
     try:
         result = await asyncio.get_event_loop().run_in_executor(None, _process_sync)
@@ -479,31 +486,21 @@ async def analyze_audio(file: UploadFile = File(...)) -> EmotionResponse:
         raise HTTPException(status_code=500, detail=f"Audio processing error: {exc}")
 
     latency_ms = (time.perf_counter() - t0) * 1000
+    modalities_used = result.pop("modalities", {"text": False, "audio": True, "vision": False})
     transcript = result.pop("transcript", None)
-    text_active = result.pop("text_active", False)
-    modalities_used = {"text": text_active, "audio": True, "vision": False}
 
     logger.info(
-        "Audio inference → %s (%.1f%%) | %.1f ms | text=%s | mock=%s",
-        result["emotion"], result["confidence"], latency_ms, text_active, model_loader.is_mock(),
+        "Audio inference → %s (%.1f%%) | %.1f ms | mock=%s | transcript=%s",
+        result["emotion"], result["confidence"], latency_ms, model_loader.is_mock(),
+        repr(transcript[:50]) if transcript else None,
     )
-
-    _session_history.appendleft({
-        "id": str(int(time.time() * 1000)),
-        "emotion": result["emotion"],
-        "confidence": result["confidence"],
-        "probabilities": result["probabilities"],
-        "transcript": transcript,
-        "modalities_used": modalities_used,
-        "latency_ms": round(latency_ms, 2),
-    })
 
     return EmotionResponse(
         **result,
         mock=model_loader.is_mock(),
         latency_ms=round(latency_ms, 2),
-        modalities_used=modalities_used,
         transcript=transcript,
+        modalities_used=modalities_used,
     )
 
 
@@ -630,21 +627,6 @@ async def analyze_multimodal_csv(
     t0 = time.perf_counter()
     modalities_used = {"text": False, "audio": False, "vision": False}
 
-    def _build_and_infer() -> dict:
-        input_ids, attention_mask = None, None
-        audio_tensor, vision_tensor = None, None
-
-        if text and text.strip():
-            input_ids, attention_mask = _tokenize(text.strip())
-            modalities_used["text"] = True
-
-        return model_loader.run_inference(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            audio=audio_tensor,
-            vision_feats=vision_tensor,
-        )
-
     # Читаем CSV файлы (async, перед executor)
     audio_bytes = await audio_csv.read() if audio_csv else None
     vision_bytes = await vision_csv.read() if vision_csv else None
@@ -694,7 +676,8 @@ async def analyze_multimodal_csv(
 
 
 # ── POST /api/analyze/video ───────────────────────────────────────────────────
-MAX_VIDEO_MB = 200   # 200 MB — достаточно для видео с телефона
+ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime", "application/octet-stream"}
+MAX_VIDEO_MB = 100
 
 
 @app.post(
@@ -721,10 +704,10 @@ async def analyze_video(
 ) -> EmotionResponse:
     t0 = time.perf_counter()
 
-    if not _is_acceptable_video(file.content_type):
+    if file.content_type and file.content_type not in ALLOWED_VIDEO_TYPES:
         raise HTTPException(
             status_code=415,
-            detail=f"Неподдерживаемый тип файла: {file.content_type}. Загрузи видеофайл (MP4, MOV, WebM, AVI, MKV, 3GP и др.).",
+            detail=f"Unsupported media type: {file.content_type}. Use mp4 or webm.",
         )
 
     data = await file.read()
@@ -732,18 +715,14 @@ async def analyze_video(
     if size_mb > MAX_VIDEO_MB:
         raise HTTPException(
             status_code=413,
-            detail=f"Файл слишком большой ({size_mb:.1f} MB). Максимум {MAX_VIDEO_MB} MB.",
+            detail=f"File too large ({size_mb:.1f} MB). Maximum is {MAX_VIDEO_MB} MB.",
         )
 
-    # Определяем расширение по имени файла (надёжнее чем content-type)
-    # ffmpeg справится с любым из этих форматов
-    _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4v", ".3gp", ".3gpp", ".ts", ".mts", ".wmv", ".flv"}
     suffix = ".mp4"
-    if file.filename and "." in file.filename:
+    if file.filename:
         ext = "." + file.filename.rsplit(".", 1)[-1].lower()
-        suffix = ext if ext in _VIDEO_EXTS else ".mp4"
-    logger.info("Принят файл: name=%s content_type=%s suffix=%s size=%.1fMB",
-                file.filename, file.content_type, suffix, size_mb)
+        if ext in (".mp4", ".webm", ".mov"):
+            suffix = ext
 
     def _process_sync() -> dict:
         # extract_all_features: видео → COVAREP + OpenFace AU + Whisper
@@ -777,31 +756,13 @@ async def analyze_video(
         result["emotion"], result["confidence"], latency_ms, active, model_loader.is_mock(),
     )
 
-    # Сохраняем в историю сессии
-    _session_history.appendleft({
-        "id": str(int(time.time() * 1000)),
-        "emotion": result["emotion"],
-        "confidence": result["confidence"],
-        "probabilities": result["probabilities"],
-        "transcript": transcript,
-        "modalities_used": modalities_used,
-        "latency_ms": round(latency_ms, 2),
-    })
-
     return EmotionResponse(
         **result,
         mock=model_loader.is_mock(),
         latency_ms=round(latency_ms, 2),
-        modalities_used=modalities_used,
         transcript=transcript,
+        modalities_used=modalities_used,
     )
-
-
-# ── GET /api/history ─────────────────────────────────────────────────────────
-@app.get("/api/history", tags=["Session"])
-async def get_history():
-    """Последние 5 результатов анализа в текущей сессии (хранится в памяти)."""
-    return {"history": list(_session_history)}
 
 
 # ── WebSocket /ws/camera ──────────────────────────────────────────────────────

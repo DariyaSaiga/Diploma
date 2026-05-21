@@ -1,0 +1,72 @@
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=0.82\textwidth,
+    height=6.5cm,
+    bar width=0.55cm,
+    enlarge x limits=0.25,
+    ylabel={Score},
+    ymin=0.55, ymax=0.72,
+    ytick={0.55,0.58,0.61,0.64,0.67,0.70},
+    yticklabel style={
+        /pgf/number format/fixed,
+        /pgf/number format/precision=2,
+        font=\scriptsize,
+    },
+    symbolic x coords={Baseline 1, Baseline 2, Proposed},
+    xtick=data,
+    x tick label style={font=\small},
+    ylabel style={font=\small},
+    grid=major,
+    grid style={gray!15},
+    axis lines=left,
+    legend style={
+        font=\scriptsize,
+        at={(0.5,1.03)},
+        anchor=south,
+        legend columns=2,
+        draw=gray!30,
+        column sep=8pt,
+    },
+    title={\small Avg.~F1 and Avg.~WA Comparison across Architectures},
+    title style={font=\small},
+    nodes near coords,
+    nodes near coords style={
+        font=\scriptsize,
+        /pgf/number format/fixed,
+        /pgf/number format/precision=4,
+    },
+    every node near coord/.append style={yshift=2pt},
+]
+ 
+% Avg F1
+\addplot[
+    fill=colBottle!40,
+    draw=colBottle!80,
+    line width=0.6pt,
+] coordinates {
+    (Baseline 1, 0.4412)
+    (Baseline 2, 0.4631)
+    (Proposed,   0.4854)
+};
+\addlegendentry{Avg.~F1}
+ 
+% Avg WA
+\addplot[
+    fill=colAudio!35,
+    draw=colAudio!70,
+    line width=0.6pt,
+] coordinates {
+    (Baseline 1, 0.6389)
+    (Baseline 2, 0.6552)
+    (Proposed,   0.6775)
+};
+\addlegendentry{Avg.~WA}
+ 
+\end{axis}
+\end{tikzpicture}
+\caption{Avg.~F1 and Avg.~WA scores for the three implemented architectures on the CMU-MOSEI test set. Each step from simpler to more structured fusion produces a consistent improvement in both metrics.}
+\label{fig:arch_comparison_bar}
+\end{figure}

@@ -1,0 +1,153 @@
+% ============================================================
+% File: literature_review.tex
+% Chapter 2: Literature Review
+% ============================================================
+
+\chapter{Literature Review}
+\label{chap:literature_review}
+
+\setlength{\parskip}{1em}
+
+\section{Emotion Recognition in Human Communication}
+
+Emotions are a fundamental part of how people communicate in nowadays world. When someone speaks, they do not only use words to express their thoughts — they rely on the tone of their voice, their facial expressions, and their body language to convey how they feel. For a long time, computers were simply able to understand the content of speech, not the way in which it was spoken or the speaker's facial expressions. The field of emotion recognition research aims to alter this by allowing machines to recognize and analyse human emotional states from observable information.
+ 
+Kalateh et al. conducted a comprehensive systematic review of multimodal emotion recognition and described it as a field that "combines different types of human signals in order to improve the reliability of emotion analysis" \cite{kalateh2024systematic}. Their review covers a wide range of applications where emotion recognition is already being used or studied: human-computer interaction, healthcare, education, social robotics, gaming, and intelligent assistants. What stands out in their findings is that none of these domains can rely on a single signal alone — in healthcare, for example, a patient might say they feel fine while their voice and face suggest otherwise. This gap between what is said and what is actually felt is exactly why automatic emotion recognition is both difficult and important.
+ 
+The field did not start with the sophisticated systems we see today. Koromilas and Giannakopoulos traced the development of multimodal emotion recognition from its earliest stages, showing that the first systems relied almost entirely on handcrafted features and classical machine learning classifiers like Support Vector Machines \cite{koromilas2021deep}. These early methods worked decently in controlled laboratory environments, but they had trouble with real-world data, including noisy speech, partially visible faces, and subtle or ambiguous emotional expressions. This was fundamentally changed as the transition toward deep learning; recurrent neural networks (RNN), convolutional networks, and eventually transformer-based models. All this made it possible to learn complex patters straight from data without needing to manually describe what an emotional signal looks like.
+
+One of the core reasons multimodal approaches outperform unimodal ones is explained clearly by Kalateh et al., who note that using several modalities together allows the system to become more robust, because one modality can compensate for the weakness of another \cite{kalateh2024systematic}. A classic example is sarcasm — a sentence that sounds positive in text might carry a completely different meaning when combined with a flat or negative vocal tone. Similarly, a spoken phrase might be unclear without seeing the speaker's face. Neither text, audio or video alone tells the full story. Koromilas and Giannakopoulos further support this by pointing out that "the two key challenges in multimodal learning are learning complex interactions within and across modalities, and building models that are robust when one modality is missing or noisy at test time" \cite{koromilas2021deep}.
+ 
+This project sits directly within this context. The system developed there by using an attention bottleneck fusion technique to deal with three modalities: text, audio, and visual. The purpose is to learn how various signals interact and what occurs when the model must handle uncommon emotions that appear infrequently in training data. This goal goes far beyond merely creating a system that accurately identifies the most prevalent emotion.  The challenges highlighted by Kalateh et al. directly shaped the design of this project. Specifically, modality heterogeneity, class imbalance, and the necessity for effective cross-modal interaction motivated the architectural and training choices detailed in subsequent chapters, a consensus further supported by Koromilas and Giannakopoulos\cite{koromilas2021deep}.
+
+
+\section{The CMU-MOSEI Dataset}
+
+Datasets are important in multimodal emotion recognition because they define what kind of emotional signals a model can learn from. For this task, the dataset should include text, audio, and visual information, since emotion is usually expressed through language, voice, and facial behavior together. Zadeh et al. introduced CMU-MOSEI as a large-scale collection for multimodal language analysis collected from online videos \cite{zadeh2018multimodal}. The authors describe it as a dataset based on natural monologue-style recordings, where speakers express opinions in real-world conditions. This makes it useful for realistic emotion recognition research, but also more difficult than controlled laboratory datasets.
+
+In the original paper, Zadeh et al. explain that the dataset contains three main modalities: language, acoustic signals, and visual signals \cite{zadeh2018multimodal}. Each modality carries a different type of affective information. Text provides the semantic meaning of an utterance. Audio reflects how the speaker says it through prosody, rhythm, and vocal intensity. Visual information describes facial behavior and other non-verbal cues. This multimodal structure makes CMU-MOSEI suitable for studying cross-modal learning, because the model has to combine different sources of information instead of relying on only one channel.
+
+Main study collection is also important because it supports both sentiment analysis and emotion recognition. Sentiment analysis usually focuses on polarity, such as positive or negative meaning, while emotion recognition is more detailed and focuses on separate emotion categories. Mora Melanchthon describes CMU-MOSEI emotion recognition as a categorical task where each emotion can be treated as present or absent \cite{mora2021unimodal}. This means that the task is not the same as simple single-label classification. One utterance may contain several emotional cues, and each emotion must be considered separately.
+
+A major difficulty of CMU-MOSEI is the uneven distribution of emotion labels. Mora Melanchthon notes that happiness is the most frequent emotion in the dataset, while fear and surprise are among the rarest categories \cite{mora2021unimodal}. This imbalance affects how models learn. A model may recognize frequent emotions more easily, but fail on rare classes. Because of this, overall accuracy can be misleading. A system may look effective if it predicts common emotions correctly, even when it performs poorly on minority emotions.
+
+Mora Melanchthon also shows that feature-level performance on dataset differs across modalities \cite{mora2021unimodal}. Text, acoustic, and visual features do not contribute equally to every emotion, and feature selection or transformation can affect model performance. This shows that multimodal emotion recognition depends not only on the fusion method, but also on how well each modality is represented before fusion. Overall, Zadeh et al. provide the foundation for CMU-MOSEI and its multimodal structure, while Mora Melanchthon highlights its emotion recognition setting, class imbalance, and modality-specific feature challenges \cite{zadeh2018multimodal,mora2021unimodal}.
+
+\section{Feature Extraction for Text, Audio, and Video Modalities}
+
+Before a multimodal system can start learning, raw data must be converted into numerical representations that can be processed by a neural network. A video file itself is only a combination of visual frames and sound signals, and these signals need to be transformed into structured feature representations. This stage is known as feature extraction. In this project, three separate feature pipelines are used: one for text, one for audio, and one for visual data. Each pipeline is based on established tools and methods used in multimodal emotion recognition literature.
+
+For the text modality, recent studies often use pre-trained language models instead of simple static word embeddings. Makhmudov et al. explain that using a pre-trained BERT-based model is useful because it has already learned rich linguistic representations from a large text corpus \cite{makhmudov2024enhancing}. BERT, which stands for Bidirectional Encoder Representations from Transformers, processes text bidirectionally and therefore captures how each word is related to its surrounding context. This is important for emotion recognition because the emotional meaning of a word or phrase often depends on the full sentence. For example, the word ``fine'' may express a neutral meaning in one context but may also carry negative or sarcastic meaning in another context. In this project, BERT-base-uncased is used as a frozen feature extractor, and the final text representation is obtained by averaging the outputs of the last four hidden layers. A similar use of BERT-based textual representation is also found in video emotion recognition research by Xia et al. \cite{xia2022multimodal}.
+
+For the audio modality, this project uses COVAREP acoustic features. COVAREP is a collaborative voice analysis toolkit that extracts low-level acoustic descriptors from speech signals. It produces a 74-dimensional feature vector for each time frame and captures properties such as fundamental frequency, Mel-frequency cepstral coefficients, spectral envelope, glottal source parameters, and voiced--unvoiced segmentation indicators. These acoustic descriptors represent how a person speaks, including pitch, rhythm, energy, and voice quality. Such characteristics are important for emotion recognition because emotional states are often reflected in vocal behavior. For example, fear may be associated with changes in pitch and energy, while sadness may be expressed through slower and lower-energy speech. Mora Melanchthon discusses the use of acoustic features in CMU-MOSEI-based emotion recognition and shows that such features provide a compact and interpretable representation of emotional speech signals \cite{mora2021unimodal}. COVAREP-based acoustic features are also commonly used in multimodal transformer-based studies on CMU-MOSEI \cite{tsai2019multimodal}.
+
+For the visual modality, this project uses facial behavior features extracted with OpenFace. OpenFace is a toolkit that detects facial landmarks, head pose, eye gaze, and facial action units from video frames \cite{mora2021unimodal}. Facial action units describe the movement of specific facial muscle groups. For example, some action units correspond to cheek movement, lip corner movement, or brow movement. In this project, the visual representation consists of 35 values per frame, including action unit intensity scores and binary presence indicators. These features are not raw pixel values; they are compact numerical descriptors of facial behavior at each moment. This makes them easier to process and more interpretable than raw image frames, especially in datasets such as CMU-MOSEI where video quality and recording conditions may vary.
+
+The use of handcrafted features such as COVAREP and OpenFace is a deliberate trade-off in this project. More recent models, such as the MER-SEM-MBT model proposed by Xia et al., use stronger pretrained neural encoders, including VGGish for audio and ResNet18 for visual features \cite{xia2022multimodal}. These encoders can produce richer representations and may achieve stronger benchmark results. However, they also require more computational resources and are less interpretable than compact handcrafted descriptors. Therefore, this project uses standard CMU-MOSEI feature representations in order to keep the system computationally feasible and comparable with widely used multimodal baselines such as MulT \cite{tsai2019multimodal}.
+
+\section{Multimodal Fusion Approach}
+When features are extracted from each modality,  the next question is how to combine them. In general, this step is calles multimodal fusion, and it isplays a crucial role in the design of multmodal system.  The modality fusion strategy determines whether the model can effectively capture cross-modal relationships between rext, audio and video. Over the years,researchers have proposed many different fusion strategies, varying from straightforward to complex architectures. Therefore, undestanding their trade-offs is very important for the frameworks.
+
+The simplest strategies are early fusion and late fusion. In early fusion, features from all input streams are concatenated into a single vector before being passed to the model.  This is easy to implement, but it assumes that all modalities are equally important at every stage of processing. That is why one madality may be noisier or weaker than the others. In late fusion, each modality is processed by a completely separate model, and only the final predictions are combined. It allows each modality to be processed independently, but it reduces the capacity to learn fine-grained cross-modal feature interactions. As Nagrani et al. describe, late fusion is a useful baseline. However, full early fusion, where every token can attend to every other token across modalities, is computationally expensive and not always more accurate. This happens because much of the cross-modal attention is spent on redundant or irrelevant information \cite{nagrani2021attention}.
+
+The approach that changed the direction of the field for multimodal language analysis was the Multimodal Transformer, known as MulT, introduced by Tsai et al. \cite{tsai2019multimodal}. Instead of simply concatenating features or averaging predictions, MulT introduced directional cross-modal attention, where one modality attends to another. For example, the language modality can attend to the audio sequence, asking at each word: which audio frames are most relevant to what is being said here? This property is particularly useful for CMU-MOSEI, where the modalities are not perfectly aligned in time. For instance, a facial expression may appear a fraction of a second before the corresponding word is spoken.  MulT handles this naturally because cross-modal attention does not require alignment; it learns the correspondence between sequences directly from data. Tsai et al. showed that cross-modal attention consistently outperforms early and late fusion approaches on CMU-MOSEI. As a result, MulT has become a widely used benchmark in later studies.
+
+Nevertheless, MulT has a limitation. When three modalities are used with bidirectional attention between every pair, the number of cross-modal attention operations increases rapidly. This leads to a situation where a considerable amount of attention is spent on information that is not always relevant for the final emotion prediction. Jia et al. also note that the audio modality often contributes less than text or vision in many multimodal models. They argue that more efficient fusion strategies can help balance the contribution of each modality without significantly reducing overall performance \cite{jia2024efficient}. This observation is relevant to this project, where COVAREP audio features are already weaker than BERT text representations by nature, and the fusion mechanism needs to handle this imbalance thoughtfully.
+
+Recent work has focused on combining the advantages of cross-modal attention with more controlled information flow. Xia et al. introduced a model that adds a semantic enhancement step before fusion. It uses the text modality to guide how audio and visual representations are refined \cite{xia2022multimodal}. Their method is based on the assumption that text provides the most reliable high-level semantic information. By making audio and visual representations more text-aware before fusion, the model can learn better joint representations.This type of modality-guided fusion represents a more structured way of modeling cross-modal interactions. Instead of allowing all modalities to influence each other equally, some models explicitly assign a guiding role to the most informative modality.
+
+All of these approaches share a common limitation. They allow full pairwise attention between all tokens across modalities, which scales quadratically with sequence length. As a result, the model exchanges a large amount of redundant information. The next section introduces a fundamentally different idea that this project builds on directly. The attention bottleneck restricts cross-modal information flow by passing it through a small set of shared latent tokens.
+
+
+\section{Attention Bottleneck Mechanism}
+
+More controlled way for modality of exchange information demonstrated by attention bottleneck mechanism. In emotion recognition, this is especially useful because text, audio, and visual signals do not contribute equally at every moment. Some words may be emotionally neutral, some audio frames may contain noise, and some facial movements may not express a clear body language. Full cross-modal attention can capture rich interactions, but it may also become computationally heavy and pass redundant information between modalities. Nagrani et al. address this problem through the Multimodal Bottleneck Transformer, where a small group of fusion tokens works as an intermediate communication channel between modality-specific streams \cite{nagrani2021attention}. Similar concerns are also discussed by He et al., who use bottleneck attention in a domain-separated fusion framework to control interaction between shared and modality-specific representations \cite{he2024domain}. Nguyen et al. further promote this direction by extending bottleneck-based fusion to multimodal emotion recognition under class imbalance conditions \cite{nguyen2025enhanced}. Together, these studies show that bottleneck attention is not only a way to reduce computation. They act as a method for making cross-modal communication more selective and meaningful.
+
+Nagrani et al. introduced this idea in the Multimodal Bottleneck Transformer (MBT) \cite{nagrani2021attention}. Instead of allowing focused dedication between all modality tokens, MBT uses a small number of fusion bottleneck tokens as an intermediate communication channel. Each modality sends information to these tokens, and the bottleneck tokens then share the compressed information back to the modality-specific streams. Their study shows that bottleneck-based fusion can reduce computational cost while still preserving important cross-modal interaction. This makes the mechanism useful for multimodal tasks where full pairwise attention may be unnecessary or inefficient.
+
+The main strength of bottleneck tokens is their selectivity. Since the number of bottleneck tokens is limited, the model cannot simply transfer all information from one modality to another. It has to compress and prioritize the most important signals. Because emotional evidence is often localized to brief vocal or facial expressions, bottleneck attention provides a dual benefit: reducing computational costs and guiding the network toward sparse, meaningful multimodal features \cite{nagrani2021attention}.
+
+Later studies adapted bottleneck-based fusion more directly to multimodal emotion recognition. He et al. proposed the Domain-Separated Bottleneck Attention Fusion framework, where modality representations are separated into private and invariant domains \cite{he2024domain}. The private domain preserves modality-specific information, while the invariant domain captures shared emotional information across modalities. This is useful because text, audio, and visual signals do not always express emotion in the same way. By applying bottleneck attention between these separated representations, the model can exchange information in a more structured way instead of simply mixing all features together \cite{he2024domain}.
+
+Nguyen et al. also extended the bottleneck transformer approach in the Extended Multimodal Bottleneck Transformer (XMBT) \cite{nguyen2025enhanced}. Their work is especially relevant to CMU-MOSEI emotion recognition because it considers both multimodal fusion and class imbalance. XMBT uses modality-specific branches together with shared bottleneck tokens and adds auxiliary learning signals for individual modalities. The authors also introduce Dynamic Restrained Adaptive loss to enhance learning for underrepresented emotions. This showcase that bottleneck fusion integrates with targeted training strategies to mitigate modality dominance and class imbalance \cite{nguyen2025enhanced}.
+
+Overall, research points to computational and representational benefits of attention bottleneck approaches.   They recommend the model to focus on clear, informative cross-modal signals and prevent unneeded attention exchanges. Nevertheless, bottleneck attention by itself is not a whole solution. The training strategy, class imbalance management, and the quality of modality-specific elements continue to determine its efficacy. Bottleneck fusion is therefore combined with domain separation, secondary losses, and adaptive loss functions in order in modern studies \cite{he2024domain,nguyen2025enhanced}. These findings provide the theoretical foundation for this project's primary fusion approach that acts as an attention bottleneck mechanism.
+
+\section{Gaps in Existing Research and Project Justification}
+
+The reviewed literature shows that multimodal emotion recognition has improved significantly, but several problems remain open. One of the main difficulties is the recognition of rare emotions in CMU-MOSEI. Emotions such as fear and surprise appear much less often than happiness, so models can become biased toward frequent categories. Nguyen et al. discuss this problem and propose adaptive loss design to improve learning for underrepresented emotions \cite{nguyen2025enhanced}. He et al. also show that minority emotions are harder to classify because of class imbalance and overlapping emotional patterns \cite{he2024domain}. For this reason, this project does not rely only on general accuracy. It considers weighted loss, threshold tuning, macro-F1, and per-class F1 analysis.
+
+Another important gap concerns how different modalities are represented before fusion. Text, audio, and visual features have different structures and dimensions, so they uncapable to fuse directly without transformation. Encoders are needed to convert each modality into a numerical representation that the model can process, and to map all modalities into a shared hidden dimension. Some recent studies use more complex feature extraction pipelines at this stage. For example, Xia et al. use VGGish for audio and ResNet18 for visual information to obtain richer representations \cite{xia2022multimodal}. However, such approaches require more computational resources. This project utilizes standard CMU-MOSEI features. Specifically, modality-specific encoders project BERT-based text, COVAREP acoustic, and OpenFace-style visual features into a unified representation space prior to bottleneck fusion.
+
+A further limitation is that many studies make it difficult to understand which part of the model actually improves performance. In some papers, several changes are added at the same time: stronger feature extractors, new fusion blocks, auxiliary losses, or adaptive training strategies. As a result, it is not always clear whether the improvement comes from the fusion mechanism or from another component. Xia et al. show the value of semantic enhancement, while Nguyen et al. combine bottleneck fusion with auxiliary losses and adaptive loss design \cite{xia2022multimodal,nguyen2025enhanced}. This project addresses the same issue by comparing model variants under one experimental setting and analyzing the effect of different design choices.
+
+Furthermore, a practical gap persists between benchmark models and deployable, production-ready systems. While literature extensively reports performance metrics on curated datasets, discussions regarding the integration of these models into operational applications remain limited. Kalateh et al. note that computational complexity, real-time performance, and deployment remain important challenges in multimodal emotion recognition \cite{kalateh2024systematic}. This is relevant because an emotion recognition model should not only work in an isolated experiment, but also be understandable and extendable as part of a software system. Consequently, this project evaluates both model training and the deployment of the trained architecture within a prototype system.
+
+In conclusion, these gaps justify the direction of this work. The project focuses on attention bottleneck fusion because it offers a controlled way to exchange information between text, audio, and visual modalities. Furthermore, this study addresses class imbalance, modality representation, and systematic evaluation. The objective extends beyond comparative score analysis to evaluate whether a compact, bottleneck-based fusion strategy can effectively support a realistic multimodal emotion recognition system utilizing standard CMU-MOSEI features.
+
+\section{Comparative Analysis of Related Works}
+
+Table~\ref{tab:lit_comparative} summarises the main related works reviewed in this chapter. The comparison focuses on the model type, used modalities, dataset, reported Avg.~F1 where available, and the design idea that makes each study relevant to this project.
+
+\begin{table}[H]
+\centering
+\caption{Comparative analysis of related works in multimodal emotion recognition.}
+\label{tab:lit_comparative}
+\scriptsize
+\begin{tabular}{p{2.7cm} p{2.8cm} p{1.6cm} p{1.7cm} p{1.2cm} p{4.4cm}}
+\hline
+\textbf{Study} & \textbf{Model Type} & \textbf{Modality} & \textbf{Dataset} & \textbf{Avg.~F1} & \textbf{Key Notes} \\
+\hline
+
+Tsai et al. (2019) \cite{tsai2019multimodal}
+& Multimodal Transformer (MulT)
+& Text + Audio + Vision
+& CMU-MOSEI
+& 0.475
+& Uses directional cross-modal attention for unaligned sequences. This work is important as a strong reference model for CMU-MOSEI. \\[4pt]
+
+Nagrani et al. (2021) \cite{nagrani2021attention}
+& Multimodal Bottleneck Transformer (MBT)
+& Audio + Vision
+& AudioSet, VGGSound
+& --
+& Introduces bottleneck tokens for multimodal fusion. The idea reduces full pairwise attention by passing information through shared latent tokens. \\[4pt]
+
+Xia et al. (2022) \cite{xia2022multimodal}
+& MER-SEM-MBT
+& Text + Audio + Vision
+& CMU-MOSEI
+& 0.509
+& Combines semantic enhancement with bottleneck fusion. The model uses BERT, VGGish, and ResNet18, which gives stronger audio and visual representations. \\[4pt]
+
+He et al. (2024) \cite{he2024domain}
+& Domain-Separated Bottleneck Attention
+& Text + Audio + Vision
+& CMU-MOSEI
+& --
+& Separates private and invariant modality representations. The study also supports the use of bottleneck attention for structured cross-modal exchange. \\[4pt]
+
+Nguyen et al. (2025) \cite{nguyen2025enhanced}
+& XMBT + DRA loss
+& Text + Audio + Vision
+& CMU-MOSEI
+& 0.496
+& Extends bottleneck fusion to multimodal emotion recognition and adds adaptive loss for class imbalance. The work is especially relevant for rare emotions such as fear and surprise. \\[4pt]
+
+Sanjyal (2026) \cite{sanjyal2026affectdiff}
+& Causal-Diffusion Bridge
+& Text + Audio + Vision
+& CMU-MOSEI subset
+& 0.214
+& Uses compact acoustic and visual features with a smaller aligned subset. The result shows that feature quality and data volume can strongly affect final scores. \\[4pt]
+
+\textbf{Proposed work}
+& \textbf{BERT + Conv1D + Bottleneck Attention}
+& \textbf{Text + Audio + Vision}
+& \textbf{CMU-MOSEI}
+& \textbf{0.485}
+& Uses frozen BERT, COVAREP, OpenFace, 16 bottleneck tokens, auxiliary losses, and modality dropout. The model focuses on compact feature representations and rare emotion recognition. \\
+
+\hline
+\end{tabular}
+\end{table}

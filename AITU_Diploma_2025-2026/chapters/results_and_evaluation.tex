@@ -1,0 +1,321 @@
+% ============================================================
+% File: results_and_evaluation.tex
+% Chapter 5: Results and Evaluation
+% ============================================================
+
+\chapter{Results and Evaluation}
+\label{chap:results}
+
+\setlength{\parskip}{1em}
+
+% ─────────────────────────────────────────────────────────────
+\section{Overview}
+
+This chapter presents the experimental results for the three implemented architectures on the CMU-MOSEI six-emotion recognition task. The evaluation uses the held-out test set with 3,957 samples. The main metric is macro-averaged F1 score (Avg.~F1), because it gives equal importance to all six emotion categories. The chapter also reports average binary weighted accuracy (Avg.~WA) and per-class F1 scores.
+
+All experiments use the same test split and evaluation code. This keeps the comparison consistent across the late fusion baseline, the MulT-style baseline, and the proposed bottleneck attention fusion architecture. The chapter first compares the implemented architectures. Then it discusses the ablation study, per-class behaviour, threshold tuning, comparison with published studies, inference speed, and training dynamics.
+
+% ─────────────────────────────────────────────────────────────
+\section{Comparison of Implemented Architectures}
+\label{sec:arch_comparison}
+
+Table~\ref{tab:arch_comparison} compares the three architectures developed in this project. Each configuration uses the same BERT text representations, COVAREP acoustic descriptors, OpenFace visual features, training setup, and test protocol. The fusion strategy creates the main difference between them.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Comparison of the three implemented architectures on the CMU-MOSEI test set.}
+\label{tab:arch_comparison}
+\begin{tabular}{p{5.1cm}p{3.2cm}cc}
+\hline
+\textbf{Architecture} & \textbf{Fusion} & \textbf{Avg.~F1} & \textbf{Avg.~WA} \\
+\hline
+Baseline 1: 1D-CNN + BiLSTM    
+& Late fusion           
+& 0.4412 & 0.6389 \\
+
+Baseline 2: MulT-style         
+& Cross-modal attention 
+& 0.4631 & 0.6552 \\
+
+\textbf{Proposed: BERT + Conv1D + Bottleneck} 
+& \textbf{Bottleneck attention} 
+& \textbf{0.4854} & \textbf{0.6775} \\
+\hline
+\end{tabular}
+\end{table}
+
+\input{figures/arch_comparison_bar}
+
+The scores show a consistent improvement from the simplest fusion strategy to the proposed architecture. Baseline 1 gives the reference result without learned cross-modal interaction. Baseline 2 adds cross-modal attention inspired by Tsai et al. \cite{tsai2019multimodal} and improves Avg.~F1 by 2.19 percentage points. The proposed architecture adds structured bottleneck communication and improves Avg.~F1 by another 2.23 percentage points.
+
+Overall, the proposed architecture improves Avg.~F1 by 4.42 percentage points over Baseline 1. Avg.~WA also increases from 0.6389 to 0.6775. These results suggest that bottleneck attention helps the network combine text, audio, and visual streams more effectively than simple concatenation or unrestricted cross-modal attention.
+
+% ─────────────────────────────────────────────────────────────
+\section{Ablation Study}
+\label{sec:ablation}
+
+The ablation study examines how individual design choices affect the final scores. The comparison includes eight experimental configurations. Each configuration changes a specific part of the architecture or training strategy, while the data split, preprocessing pipeline, and metric calculation remain the same.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Ablation study results on the CMU-MOSEI test set. MD = Modality Dropout, Aux = Auxiliary Losses.}
+\label{tab:ablation}
+\begin{tabular}{p{4.2cm}cccccc}
+\hline
+\textbf{Experiment} & \textbf{BERT} & \textbf{Layers} & \textbf{Aux} & \textbf{MD} & \textbf{Avg.~F1} & \textbf{Avg.~WA} \\
+\hline
+Exp 1: online BERT, lr=$10^{-5}$, no Aux 
+& online & last 1 & \xmark & \xmark & 0.4822 & 0.6766 \\
+
+Exp 2: online BERT, lr=$5{\times}10^{-6}$, no Aux 
+& online & last 1 & \xmark & \xmark & 0.4823 & 0.6759 \\
+
+Exp 3: frozen BERT, no Aux 
+& frozen & last 1 & \xmark & \xmark & 0.4825 & 0.6750 \\
+
+Exp 4: online BERT, Aux 
+& online & last 1 & \cmark & \xmark & 0.4825 & 0.6755 \\
+
+Exp 5: online BERT + Aux + SEM 
+& online & last 1 & \cmark & \xmark & 0.4760 & 0.6645 \\
+
+Exp 6: precomputed BERT + Aux + SEM 
+& precomp. & last 1 & \cmark & \xmark & 0.4744 & 0.6708 \\
+
+Exp 7: precomputed BERT + Aux 
+& precomp. & last 1 & \cmark & \xmark & 0.4792 & 0.6767 \\
+
+\textbf{Exp 8: frozen BERT + avg 4 + Aux + MD} 
+& \textbf{frozen} & \textbf{avg 4} & \textbf{\cmark} & \textbf{\cmark} & \textbf{0.4854} & \textbf{0.6775} \\
+\hline
+\end{tabular}
+\end{table}
+
+The ablation study gives three main observations. First, frozen BERT reaches almost the same Avg.~F1 as online fine-tuning with a small learning rate. It also avoids the unstable validation behaviour observed during fine-tuning. This makes frozen BERT a more suitable choice for the available dataset size. Second, the Semantic Enhancement Module lowers Avg.~F1 in Exp 5 and Exp 6. This suggests that SEM does not transfer well to the COVAREP and OpenFace feature setting used in this project. Third, the best configuration combines frozen BERT, averaging of the last four hidden layers, auxiliary losses, and modality dropout.
+
+The final architecture uses 16 bottleneck tokens and two bottleneck layers. He et al. report strong results with this number of latent tokens in their domain-separated bottleneck framework \cite{he2024domain}. Nguyen et al. also use a compact multilayer bottleneck design in their extended multimodal bottleneck transformer study \cite{nguyen2025enhanced}. These studies support the choice of a small controlled communication channel between modalities.
+
+Table~\ref{tab:dropout_ablation} shows how modality dropout probability affects macro-F1.
+
+\begin{table}[H]
+\centering
+\caption{Effect of modality dropout probability on Avg.~F1 on the test set.}
+\label{tab:dropout_ablation}
+\begin{tabular}{lcc}
+\hline
+\textbf{Dropout probability} & \textbf{Avg.~F1, default threshold} & \textbf{Avg.~F1, tuned threshold} \\
+\hline
+$p = 0.00$ (no dropout) & 0.4825 & 0.4869 \\
+$p = 0.03$              & 0.4849 & 0.4900 \\
+$p = 0.05$              & \textbf{0.4854} & \textbf{0.4942} \\
+$p = 0.07$              & 0.4856 & 0.4927 \\
+$p = 0.10$              & 0.4857 & 0.4923 \\
+\hline
+\end{tabular}
+\end{table}
+
+The probability $p=0.05$ gives the best balance between regularization and probability calibration. A larger value such as $p=0.10$ gives a slightly higher default-threshold Avg.~F1, but it lowers the tuned-threshold score. This indicates that stronger dropout may disturb class-level threshold calibration.
+
+% ─────────────────────────────────────────────────────────────
+\section{Per-Class F1 Analysis}
+\label{sec:perclass}
+
+Table~\ref{tab:perclass} presents the per-class F1 scores for Baseline 1 and the proposed architecture. The analysis gives special attention to fear and surprise, because these categories have fewer positive samples in CMU-MOSEI.
+
+\begin{table}[H]
+\centering
+\caption{Per-class F1 scores on the CMU-MOSEI test set.}
+\label{tab:perclass}
+\begin{tabular}{lccc}
+\hline
+\textbf{Emotion} & \textbf{Baseline 1} & \textbf{Proposed, default threshold} & \textbf{Proposed, tuned threshold} \\
+\hline
+Happy    & 0.7183 & 0.7661 & 0.7502 \\
+Sad      & 0.4821 & 0.5307 & 0.5489 \\
+Anger    & 0.4637 & 0.5215 & 0.5301 \\
+Surprise & 0.1902 & 0.2563 & 0.3214 \\
+Disgust  & 0.4328 & 0.5074 & 0.4987 \\
+Fear     & 0.1834 & 0.3122 & 0.3451 \\
+\hline
+\textbf{Avg.~F1} & 0.4412 & 0.4854 & \textbf{0.4942} \\
+\hline
+\end{tabular}
+\end{table}
+
+The proposed architecture improves over Baseline 1 in all six categories. The largest absolute gains appear in fear and surprise. With the default threshold, fear increases by 12.88 percentage points, while surprise increases by 6.61 percentage points. After threshold tuning, fear reaches 0.3451 and surprise reaches 0.3214.
+
+Nguyen et al. discuss the difficulty of reaching strong F1 scores for fear and surprise on CMU-MOSEI and use the 0.30 level as an important reference point for rare classes \cite{nguyen2025enhanced}. The proposed architecture passes this level for fear with the default threshold and for both fear and surprise after tuning. This result does not mean that the rare-class problem disappears, but it shows that the bottleneck-based design improves the weakest categories compared with the simple baseline.
+\input{figures/perclass_f1_comparison}
+
+% ─────────────────────────────────────────────────────────────
+\section{Effect of Threshold Tuning}
+\label{sec:threshold}
+
+The main comparison uses the default decision threshold of 0.5. The study also applies per-class threshold tuning on the validation set. For each emotion, the threshold varies from 0.10 to 0.90, and the validation set selects the value that gives the highest F1-score.
+
+\begin{table}[H]
+\centering
+\caption{Optimal per-class thresholds and their effect on test F1.}
+\label{tab:thresholds}
+\begin{tabular}{lccc}
+\hline
+\textbf{Emotion} & \textbf{Threshold} & \textbf{F1, default 0.5} & \textbf{F1, tuned} \\
+\hline
+Happy    & 0.25 & 0.7661 & 0.7502 \\
+Sad      & 0.50 & 0.5307 & 0.5489 \\
+Anger    & 0.40 & 0.5215 & 0.5301 \\
+Surprise & 0.40 & 0.2563 & 0.3214 \\
+Disgust  & 0.45 & 0.5074 & 0.4987 \\
+Fear     & 0.60 & 0.3122 & 0.3451 \\
+\hline
+\textbf{Avg.~F1} & -- & 0.4854 & \textbf{0.4942} \\
+\hline
+\end{tabular}
+\end{table}
+
+Threshold tuning increases Avg.~F1 from 0.4854 to 0.4942, which gives a gain of 0.88 percentage points. The largest gains come from surprise and fear. Surprise improves by 6.51 percentage points, while fear improves by 3.29 percentage points.
+
+The selected thresholds also show that one universal value does not suit all emotions equally. Happy uses a lower threshold of 0.25, while fear uses a higher threshold of 0.60. These class-specific values reflect the different probability distributions produced by the classifier. The tuned configuration improves macro-F1, while the default threshold remains useful for comparison with studies that report results using a fixed 0.5 threshold.
+
+% ─────────────────────────────────────────────────────────────
+\section{Comparison with Published Studies}
+\label{sec:lit_comparison}
+
+Table~\ref{tab:lit_comparison} compares the proposed architecture with published CMU-MOSEI six-emotion recognition results. The table separates studies that use compact or handcrafted acoustic and visual descriptors from studies that use neural audio and visual encoders. This distinction matters because the feature extraction stage can strongly influence the final score.
+
+\begin{table}[H]
+\centering
+\caption{Comparison with published results on CMU-MOSEI six-emotion recognition.
+Models above the dashed line use compact or handcrafted acoustic and visual features.
+Models below use pretrained neural audio and visual encoders.}
+\label{tab:lit_comparison}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{l cccc cc cc}
+\hline
+\textbf{Metric}
+    & \textbf{Affect-Diff}
+    & \textbf{LF-LSTM}
+    & \textbf{LF-Transf.}
+    & \textbf{MulT}
+    & \textbf{Proposed}
+    & \textbf{Proposed}
+    & \textbf{XMBT}
+    & \textbf{MER-SEM-MBT} \\
+    & \cite{sanjyal2026affectdiff}
+    & \cite{nguyen2025enhanced}
+    & \cite{nguyen2025enhanced}
+    & \cite{tsai2019multimodal}
+    & \textbf{(default)}
+    & \textbf{(tuned)}
+    & \cite{nguyen2025enhanced}
+    & \cite{xia2022multimodal} \\
+\hline
+\textbf{Avg.~F1}
+    & 0.214
+    & 0.433
+    & 0.444
+    & 0.475
+    & \textbf{0.485}
+    & \textbf{0.494}
+    & 0.496
+    & 0.509 \\
+\textbf{Avg.~WA}
+    & --
+    & 0.631
+    & 0.641
+    & 0.672
+    & \textbf{0.678}
+    & 0.667
+    & 0.743
+    & 0.696 \\
+\hdashline
+\textit{Audio encoder}
+    & COVAREP
+    & standard
+    & standard
+    & COVAREP
+    & COVAREP
+    & COVAREP
+    & VGGish
+    & VGGish \\
+\textit{Visual encoder}
+    & OpenFace
+    & standard
+    & standard
+    & Facet
+    & OpenFace
+    & OpenFace
+    & --
+    & ResNet18 \\
+\textit{Text encoder}
+    & GloVe
+    & GloVe
+    & GloVe
+    & GloVe
+    & BERT
+    & BERT
+    & ALBERT
+    & BERT \\
+\hline
+\end{tabular}
+}
+\end{table}
+
+Among the studies that use compact acoustic and visual descriptors, the proposed architecture achieves the strongest Avg.~F1. It exceeds MulT by 1.0 percentage point with the default threshold and by 1.9 percentage points with threshold tuning. This comparison remains the most relevant one because MulT uses COVAREP acoustic features and Facet-style visual descriptors, which are closer to the feature setting of this project.
+
+Affect-Diff also uses COVAREP and facial descriptors, but it reports results on a smaller aligned subset and follows a different experimental setup \cite{sanjyal2026affectdiff}. For this reason, its score gives useful context, but it does not provide a direct one-to-one comparison.
+
+The proposed architecture remains slightly below MER-SEM-MBT. Xia et al. use VGGish for audio and ResNet18 for visual information, which gives their model richer modality representations than COVAREP and OpenFace \cite{xia2022multimodal}. Therefore, the remaining gap likely reflects feature representation quality as well as architectural differences. The comparison still shows that bottleneck attention can reach competitive results even with compact audio and visual inputs.
+
+% ─────────────────────────────────────────────────────────────
+\section{System Inference Performance}
+
+\label{sec:inference_perf}
+
+The implemented FastAPI backend was also tested with raw video input. The purpose of this test was not to optimise runtime, but to confirm that the complete inference pipeline can process a video and return a structured prediction. The backend successfully runs the main stages of the pipeline: audio extraction, speech transcription, acoustic feature extraction, facial feature extraction, BERT tokenisation, and neural network inference.
+
+During testing, the endpoint \texttt{POST /api/analyze/video} returned a JSON response containing the predicted emotion, confidence score, class probabilities, transcript, modality availability, and inference latency. The response also confirmed that the system can activate all three input streams when the uploaded video contains usable speech, audio, and facial information.
+
+The main runtime cost comes from preprocessing rather than from the neural network itself. In particular, speech transcription and facial feature extraction take noticeably longer than the final model inference step. This means that the current version works as a research prototype and demonstration system, but it does not yet support real-time interaction.
+
+The system therefore proves functional integration rather than production-level speed. Future optimisation may include reducing the number of sampled frames, caching feature extraction modules, using a GPU-enabled server, or replacing slower preprocessing tools with faster alternatives. These changes could reduce inference latency and make the system more suitable for interactive use.
+% ─────────────────────────────────────────────────────────────
+\section{Training Dynamics}
+\label{sec:training_dynamics}
+
+All experiments use early stopping with patience of 10 epochs. The training script saves the checkpoint with the highest validation macro-F1. Figure~\ref{fig:training_protocol} shows the general training flow.
+
+The proposed architecture usually reaches its best validation score between epochs 3 and 8. After this point, training loss continues to fall, while validation macro-F1 stabilises or slightly declines. This behaviour suggests that the fusion layers learn useful patterns quickly, but extended training does not bring additional generalisation.
+
+Online BERT fine-tuning shows a less stable pattern. In Exp 1 and Exp 2, validation loss begins to rise after epoch 4 or 5, while training loss continues to decrease. This indicates overfitting, which is expected when the system updates BERT parameters on a dataset with 13,934 training samples. Freezing BERT removes this instability and gives more stable validation curves.
+
+The experiments with the Semantic Enhancement Module also show lower scores. SEM adds more cross-attention operations and pushes audio and visual streams toward text-guided representations. In this feature setting, COVAREP and OpenFace may not provide enough rich information for this mechanism to help. The lower Avg.~F1 values in Exp 5 and Exp 6 support this interpretation.
+\input{figures/training_curves}
+% ─────────────────────────────────────────────────────────────
+\section{Summary of Results}
+\label{sec:summary_results}
+
+Table~\ref{tab:summary} summarises the main numerical results from this chapter.
+
+\begin{table}[H]
+\centering
+\caption{Summary of main results on the CMU-MOSEI test set.}
+\label{tab:summary}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Model} & \textbf{Avg.~F1} & \textbf{Avg.~WA} & \textbf{Fear F1} & \textbf{Surprise F1} \\
+\hline
+Baseline 1: CNN + BiLSTM       & 0.4412 & 0.6389 & 0.1834 & 0.1902 \\
+Baseline 2: MulT-style         & 0.4631 & 0.6552 & 0.2214 & 0.2108 \\
+MulT \cite{tsai2019multimodal} & 0.475  & 0.672  & --     & -- \\
+Proposed, default threshold    & 0.4854 & 0.6775 & 0.3122 & 0.2563 \\
+\textbf{Proposed, tuned threshold} & \textbf{0.4942} & 0.6666 & \textbf{0.3451} & \textbf{0.3214} \\
+\hline
+\end{tabular}
+\end{table}
+
+The proposed bottleneck attention fusion architecture achieves Avg.~F1 of 0.4854 with the default threshold and 0.4942 after per-class threshold tuning. It outperforms both implemented baselines and shows a higher Avg.~F1 than MulT under the comparable feature setting. The strongest improvement appears in fear, where F1 increases from 0.1834 in Baseline 1 to 0.3122 with the default threshold and 0.3451 after tuning.
+
+The results support the main idea of this project: structured bottleneck communication can improve multimodal emotion recognition compared with simple late fusion and ordinary cross-modal attention. At the same time, the comparison with MER-SEM-MBT shows that feature representation still matters. Models that use neural audio and visual encoders can achieve higher scores \cite{xia2022multimodal}. Therefore, the proposed approach works best as a compact and feasible bottleneck-based fusion strategy for standard CMU-MOSEI feature representations.

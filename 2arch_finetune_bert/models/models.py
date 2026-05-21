@@ -89,12 +89,6 @@ class SemanticEnhancement(nn.Module):
 # между модальностями вместо дорогого полного cross-attention
 # Статья: DBA (He et al., 2024) — n=16 latent tokens оптимально
 class BottleneckLayer(nn.Module):
-    """
-    Один слой bottleneck fusion для трёх модальностей.
-    Bottleneck tokens собирают информацию из каждой модальности
-    и затем распределяют её обратно — без прямого cross-attention O(T²).
-    """
-
     def __init__(self):
         super().__init__()
         # self-attention внутри каждой модальности

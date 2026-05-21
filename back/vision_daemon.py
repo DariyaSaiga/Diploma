@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""
-vision_daemon.py — Долгоживущий subprocess для py-feat AU extraction.
-
-Протокол (stdin/stdout):
-  Stdout → родителю:
-    "READY\\n"                          — модели загружены
-    JSON {"status":"ok","features":[]}\\n  — результат
-    JSON {"status":"error","message":""}\\n — ошибка
-
-  Stdin ← от родителя:
-    <абсолютный путь к .mp4>\\n
-
-Логи py-feat → stderr (не мешают JSON в stdout).
-"""
 from __future__ import annotations
 
 import json

@@ -1,0 +1,129 @@
+\begin{thebibliography}{}
+
+\bibitem[{Anonymous Authors}, 2026]{anonymous2026context}
+{Anonymous Authors} (2026).
+\newblock Context-aware heterogeneous graph-driven multimodal representation
+  learning for emotion recognition.
+\newblock Manuscript under review at ICLR 2026.
+
+\bibitem[He et~al., 2024]{he2024domain}
+He, P., Yu, J., Ge, C., Yu, Y., Xu, W., Wang, L., Liu, T., and Kan, Z. (2024).
+\newblock Domain-separated bottleneck attention fusion framework for multimodal
+  emotion recognition.
+\newblock {\em ACM Transactions on Multimedia Computing, Communications, and
+  Applications}, 37(4):Article 111.
+
+\bibitem[Jia et~al., 2024]{jia2024efficient}
+Jia, L., Tan, J., Qi, L., and Lin, M. (2024).
+\newblock A more efficient inference model for multimodal emotion recognition.
+\newblock In {\em Proceedings of Machine Learning Research}, volume 260.
+\newblock Proceedings of ACML 2024.
+
+\bibitem[Kalateh et~al., 2024]{kalateh2024systematic}
+Kalateh, S., Estrada-Jimenez, L.~A., Nikghadam-Hojjati, S., and Barata, J.
+  (2024).
+\newblock A systematic review on multimodal emotion recognition: Building
+  blocks, current state, applications, and challenges.
+\newblock {\em IEEE Access}, 12:1--30.
+
+\bibitem[Kawaguchi et~al., 2023]{kawaguchi2023information}
+Kawaguchi, K., Deng, Z., Ji, X., and Huang, J. (2023).
+\newblock How does information bottleneck help deep learning?
+\newblock In {\em Proceedings of the 40th International Conference on Machine
+  Learning}, Proceedings of Machine Learning Research. PMLR.
+
+\bibitem[Kim et~al., 2022]{kim2022accelerating}
+Kim, S., Kim, T.-S., and Lee, W.~H. (2022).
+\newblock Accelerating 3d convolutional neural network with channel bottleneck
+  module for {EEG}-based emotion recognition.
+\newblock {\em Sensors}, 22(18):6813.
+
+\bibitem[Koromilas and Giannakopoulos, 2021]{koromilas2021deep}
+Koromilas, P. and Giannakopoulos, T. (2021).
+\newblock Deep multimodal emotion recognition on human speech: A review.
+\newblock {\em Applied Sciences}, 11(17):7962.
+
+\bibitem[Makhmudov et~al., 2024]{makhmudov2024enhancing}
+Makhmudov, F., Kultimuratov, A., and Cho, Y.-I. (2024).
+\newblock Enhancing multimodal emotion recognition through attention mechanisms
+  in {BERT} and {CNN} architectures.
+\newblock {\em Applied Sciences}, 14(10):4199.
+
+\bibitem[Mora~Melanchthon, 2021]{mora2021unimodal}
+Mora~Melanchthon, D. (2021).
+\newblock Unimodal feature-level improvement on multimodal {CMU-MOSEI} dataset:
+  Uncorrelated and convolved feature sets.
+\newblock {\em Procesamiento del Lenguaje Natural}, (67):69--81.
+
+\bibitem[Nagrani et~al., 2021]{nagrani2021attention}
+Nagrani, A., Yang, S., Arnab, A., Jansen, A., Schmid, C., and Sun, C. (2021).
+\newblock Attention bottlenecks for multimodal fusion.
+\newblock In {\em Advances in Neural Information Processing Systems},
+  volume~34, pages 14200--14213.
+
+\bibitem[Nguyen et~al., 2025]{nguyen2025enhanced}
+Nguyen, D.-K., Lim, E., Kim, S.-H., Yang, H.-J., and Kim, S. (2025).
+\newblock Enhanced emotion recognition through dynamic restrained adaptive loss
+  and extended multimodal bottleneck transformer.
+\newblock {\em Applied Sciences}, 15(5):2862.
+
+\bibitem[Pan et~al., 2023]{pan2023multimodal}
+Pan, J., Fang, W., Zhang, Z., Chen, B., Zhang, Z., and Wang, S. (2023).
+\newblock Multimodal emotion recognition based on facial expressions, speech,
+  and {EEG}.
+\newblock {\em IEEE Open Journal of Engineering in Medicine and Biology},
+  3:392--401.
+
+\bibitem[Ramyasree et~al., 2025]{ramyasree2025emotion}
+Ramyasree, K., Rao, D.~S., Rao, M.~S., and Ahmad, S. M. K. M.~A. (2025).
+\newblock Emotion recognition through multimodal bottleneck transformers: The
+  integration of speech and facial data to improve precision.
+\newblock {\em International Journal of Intelligent Engineering and Systems},
+  18(3):150--161.
+
+\bibitem[Sanjyal, 2026]{sanjyal2026affectdiff}
+Sanjyal, A. (2026).
+\newblock Multimodal emotion recognition via causal-diffusion bridge
+  ({Affect-Diff}).
+
+\bibitem[Saxe et~al., 2018]{saxe2018information}
+Saxe, A.~M., Bansal, Y., Dapello, J., Advani, M., Kolchinsky, A., Tracey,
+  B.~D., and Cox, D.~D. (2018).
+\newblock On the information bottleneck theory of deep learning.
+\newblock In {\em International Conference on Learning Representations}.
+
+\bibitem[Srinivas et~al., 2021]{srinivas2021bottleneck}
+Srinivas, A., Lin, T.-Y., Parmar, N., Shlens, J., Abbeel, P., and Vaswani, A.
+  (2021).
+\newblock Bottleneck transformers for visual recognition.
+\newblock In {\em Proceedings of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition}, pages 16519--16529.
+
+\bibitem[Tsai et~al., 2019]{tsai2019multimodal}
+Tsai, Y.-H.~H., Bai, S., Liang, P.~P., Kolter, J.~Z., Morency, L.-P., and
+  Salakhutdinov, R. (2019).
+\newblock Multimodal transformer for unaligned multimodal language sequences.
+\newblock In {\em Proceedings of the 57th Annual Meeting of the Association for
+  Computational Linguistics}, pages 6558--6569.
+
+\bibitem[Xia et~al., 2022]{xia2022multimodal}
+Xia, X., Zhao, Y., and Jiang, D. (2022).
+\newblock Multimodal interaction enhanced representation learning for video
+  emotion recognition.
+\newblock {\em Frontiers in Neuroscience}, 16:1086380.
+
+\bibitem[Yuan et~al., 2023]{yuan2023learning}
+Yuan, C., Jin, Y., Wu, Z., Wei, F., Wang, Y., Chen, L., and Wang, X. (2023).
+\newblock Learning bottleneck transformer for event image-voxel feature fusion
+  based classification.
+\newblock {\em arXiv preprint arXiv:2308.11937}.
+
+\bibitem[Zadeh et~al., 2018]{zadeh2018multimodal}
+Zadeh, A., Liang, P.~P., Vanbriesen, J., Poria, S., Cambria, E., Chen, M., and
+  Morency, L.-P. (2018).
+\newblock Multimodal language analysis in the wild: {CMU-MOSEI} dataset and
+  interpretable dynamic fusion graph.
+\newblock In {\em Proceedings of the 56th Annual Meeting of the Association for
+  Computational Linguistics}, pages 2236--2246.
+
+\end{thebibliography}

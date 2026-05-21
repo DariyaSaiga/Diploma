@@ -1,0 +1,169 @@
+% ============================================================
+% File: system_design.tex
+% Chapter 4: System Design and Implementation
+% ============================================================
+
+\chapter{System Design and Implementation}
+\label{chap:system_design}
+
+\setlength{\parskip}{1em}
+
+\section{System Architecture Overview}
+
+The implemented system consists of three main layers: the frontend application, the backend API, and the machine learning inference component. The frontend is responsible for user interaction, file upload, and displaying the predicted emotion results. The backend receives the uploaded video file, performs feature extraction, loads the trained multimodal model, runs inference, and returns the prediction to the frontend in JSON format. The machine learning component includes the BottleneckFusionModel and the feature extraction pipeline for text, audio, and visual modalities.
+
+The overall system follows a client-server architecture. The React frontend sends an HTTP request containing the uploaded video file to the FastAPI backend. The backend temporarily stores the video file during processing and returns the result to the frontend. After processing, temporary files are removed to reduce storage usage and privacy risks.
+
+The architecture does not use a persistent database in the current prototype. This decision is intentional because the system is designed as a stateless inference service. Each request is processed independently, and the system does not need to store user accounts, uploaded videos, prediction history, or annotation data. Therefore, a database layer such as PostgreSQL is not required for the current version. However, the architecture can be extended with a database in future work if prediction history, user management, or experiment logging becomes necessary.
+
+The main interaction flow is as follows. A user uploads a short video through the frontend interface. The frontend sends the file to the backend endpoint \texttt{/api/analyze/video}. The backend returns the final prediction back to the frontend.
+
+\input{figures/inference_pipeline}
+
+\section{Model Design}
+
+\label{sec:model_design}
+
+This project compares three neural architectures. The first two architectures serve as baselines, while the third one represents the proposed solution. All configurations receive the same input representations: BERT-based text tensors, COVAREP acoustic descriptors, and OpenFace facial features. The main difference lies in how each architecture combines these three streams before emotion classification.
+
+% ─────────────────────────────────────────────────────────────
+
+\subsection{Baseline 1: Late Fusion with 1D-CNN and BiLSTM}
+
+\label{subsec:baseline1}
+
+The first baseline follows a simple late fusion strategy. A linear layer projects the text representation into the required hidden size. A one-dimensional convolutional network processes the acoustic stream and captures local temporal patterns across speech frames. A Bidirectional Long Short-Term Memory network processes the visual stream and learns temporal dependencies in both directions across facial action unit sequences.
+
+After encoding, each stream produces a fixed-size vector. The architecture concatenates the text, audio, and visual vectors into one joint representation and sends it to a feed-forward classifier. The classifier then maps the combined vector to six emotion logits. This baseline does not include attention or learned cross-modal interaction. The three streams influence the final prediction only after concatenation.
+
+This configuration gives a simple reference point for comparison. It shows what level of performance the system can reach when the architecture uses separate encoders but does not learn deeper interaction between text, audio, and visual signals. If the more advanced architectures improve the results, the improvement can be linked mainly to the fusion strategy.
+
+% ─────────────────────────────────────────────────────────────
+
+\subsection{Baseline 2: Late Fusion with Multimodal Transformer}
+
+\label{subsec:baseline2}
+
+The second baseline uses a Multimodal Transformer structure inspired by Tsai et al. \cite{tsai2019multimodal}. Unlike the first baseline, this architecture introduces cross-modal attention between pairs of streams. For example, the text stream can attend to the acoustic sequence, and the acoustic stream can attend to the visual sequence. This allows each representation to receive information from another source before the final classification step.
+
+The architecture still applies late fusion at the end. Cross-modal attention enriches the individual stream representations, but the final classifier receives a concatenated vector. This makes the second baseline more expressive than the 1D-CNN and BiLSTM version, because it allows interaction before classification. However, it still does not use a structured bottleneck that controls information flow between streams.
+
+This baseline acts as an intermediate comparison point. It helps separate the effect of general cross-modal attention from the effect of bottleneck-based communication. Therefore, the comparison between this architecture and the proposed model shows whether the bottleneck mechanism adds value beyond ordinary transformer-style interaction.
+
+% ─────────────────────────────────────────────────────────────
+
+\subsection{Proposed Model: BERT + Conv1D + Attention Bottleneck Fusion}
+
+\label{subsec:proposed}
+
+The proposed architecture combines three modality-specific encoders with an attention bottleneck fusion module. Figure~\ref{fig:bottleneck_mechanism} illustrates the compression 
+and redistribution process inside one bottleneck layer.
+
+\input{figures/bottleneck_mechanism}
+
+\textbf{Text encoder.} The text branch uses BERT-base-uncased as a frozen feature extractor. This decision reduces the risk of overfitting, since fine-tuning all BERT parameters would add about 110 million trainable weights. The architecture forms the text representation by averaging the last four hidden layers of BERT. This produces a tensor of shape $[B, 50, 768]$, where $B$ represents the batch size. A linear projection then maps this tensor to $[B, 50, 128]$.
+\begin{equation}
+\mathbf{T} = \frac{1}{4} \sum_{l=9}^{12} h_l(\mathbf{x}_{\text{text}})
+\end{equation}
+
+\textbf{Audio encoder.} The audio branch receives COVAREP descriptors with shape $[B, 60, 74]$. A one-dimensional convolutional layer with kernel size 3 processes the sequence. Batch normalization, ReLU activation, and sine-cosine positional encoding follow this convolution. The branch outputs a representation with shape $[B, 60, 128]$.
+
+\textbf{Visual encoder.} The visual branch receives OpenFace facial action unit descriptors with shape $[B, 60, 35]$. It uses the same Conv1D-based structure as the audio branch. This keeps the audio and visual processing comparable while still allowing each stream to learn its own parameters. The visual encoder also outputs a tensor of shape $[B, 60, 128]$.
+
+\textbf{Bottleneck fusion.} The fusion module receives the projected text, audio, and visual sequences. It uses 16 learnable bottleneck tokens with dimension 128. The fusion process contains two layers. In each layer, self-attention first refines each stream internally. After that, the bottleneck tokens attend to the three streams and collect relevant information from them. The architecture averages the resulting bottleneck states into one shared representation. Then a second cross-attention step sends this shared information back to the modality-specific streams. A feed-forward network with residual connections completes the layer.
+
+\begin{equation}
+\mathbf{B}^{(m)} = \text{CrossAttn}(\mathbf{B},\, \mathbf{M}^{(m)},\, \mathbf{M}^{(m)})
+\end{equation}
+
+This design forces all cross-modal communication to pass through the 16 bottleneck tokens. As a result, the architecture does not allow every token from one stream to interact freely with every token from another stream. Instead, it encourages selective information exchange and reduces unnecessary interaction between irrelevant parts of the sequences.
+
+\begin{equation}
+\mathbf{B} = \frac{1}{3}\left(\mathbf{B}^{(\text{text})} + \mathbf{B}^{(\text{audio})} + \mathbf{B}^{(\text{vision})}\right)
+\end{equation}
+
+\textbf{Classification.} After fusion, the classifier uses the CLS token from the text sequence as the text summary. Mean pooling produces the audio and visual summaries. The architecture concatenates these three vectors into a 384-dimensional representation and sends it to a two-layer feed-forward classifier. The final layer produces six emotion logits.
+\begin{equation}
+\mathbf{f} = [\,\mathbf{t}_{\text{CLS}} \;\|\; \bar{\mathbf{a}} \;\|\; \bar{\mathbf{v}}\,] \in \mathbb{R}^{384}
+\end{equation}
+
+During training, the architecture also uses three auxiliary classification heads, one for each stream. These heads calculate additional losses for text, audio, and visual representations. This encourages the network to learn useful information from all three sources and reduces the risk that the final prediction relies only on the strongest stream.
+
+% ─────────────────────────────────────────────────────────────
+
+\section{Training Implementation}
+
+\label{sec:training_impl}
+
+All three architectures use the same training setup to keep the comparison fair. The training process uses the AdamW optimiser with a learning rate of $10^{-4}$. A cosine annealing schedule gradually reduces the learning rate to $10^{-6}$ over 50 epochs. Gradient clipping with a maximum norm of 1.0 controls unstable updates. Early stopping monitors validation macro-F1 and stops training if the score does not improve for 10 epochs.
+
+The loss function uses binary cross-entropy with logits and class-specific positive weights. These weights help the network learn rare emotion categories more effectively. For the proposed architecture, the total objective combines the main fusion loss with three auxiliary losses:
+
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\mathrm{fuse}} + \mathcal{L}_{\mathrm{text}} + \mathcal{L}_{\mathrm{audio}} + \mathcal{L}_{\mathrm{vision}}
+\end{equation}
+
+The training process also applies modality dropout to the audio and visual streams with probability $p = 0.05$. This regularization step helps the network avoid relying too strongly on one source of information. All experiments run on the Colab platform with a Tesla T4 GPU and batch size 8.
+
+\begin{table}[H]
+\centering
+\caption{Training hyperparameters used for all three architectures.}
+\begin{tabular}{ll}
+\hline
+\textbf{Hyperparameter} & \textbf{Value} \\
+\hline
+Optimizer        & AdamW \\
+Learning rate    & $10^{-4}$ \\
+LR schedule      & Cosine annealing \\
+Min LR           & $10^{-6}$ \\
+Max epochs       & 50 \\
+Early stopping   & patience = 10, metric = val macro-F1 \\
+Gradient clipping & max norm 1.0 \\
+Batch size       & 8 \\
+Modality dropout & $p = 0.05$ (audio and visual) \\
+GPU              & Tesla T4 (Colab) \\
+\hline
+\end{tabular}
+\label{tab:hyperparams}
+\end{table}
+
+\section{Frontend Design}
+
+The frontend component is implemented as a web interface for interacting with the emotion recognition system. Its main purpose is to allow the user to upload a video file and view the predicted emotion results in an understandable format. The interface includes a video upload area, a submission button, a loading state during backend processing, and a result display section showing the predicted emotion, confidence score, and probabilities for all six emotion categories.
+
+The frontend follows a simple user-centered design. Since emotion recognition from video can take several seconds due to feature extraction, the interface provides feedback while the request is being processed. This prevents the user from assuming that the system has stopped working. The result section is designed to show both the main predicted emotion and the full probability distribution.
+
+From an accessibility perspective, the interface should avoid relying only on color to communicate results. Emotion labels and numerical confidence values are displayed as text, so the output remains understandable even if color coding is not visible. Buttons and upload fields are designed to have clear labels, and the layout is kept minimal to reduce user confusion.
+
+The frontend communicates with the backend through HTTP requests. The uploaded video file is sent using a multipart form request to the backend API. After receiving the JSON response, the frontend parses the prediction results and renders them for the user.
+
+\section{Backend Implementation}
+
+The backend is implemented using FastAPI and provides a RESTful API for multimodal emotion recognition and system evaluation. The primary inference endpoint is \texttt{POST /api/analyze/video}, which accepts an uploaded video file and returns a structured response containing the predicted emotion, confidence score, probability distribution over emotion classes, information about activated modalities, and inference latency.
+
+The backend orchestrates the full preprocessing and inference pipeline. Upon receiving a request, the uploaded video is temporarily stored on disk. The audio stream is extracted from the video using ffmpeg and converted into a 16 kHz mono WAV format. Acoustic features are then
+
+
+computed using opensmile, producing low-level descriptor representations. In parallel, speech content is transcribed using faster-whisper, and the resulting text is tokenized using a pretrained BERT tokenizer.
+
+For the visual modality, video frames are sampled and processed using py-feat to extract facial action unit features. These representations are aligned into a fixed-length sequence compatible with the input requirements of the multimodal model.
+
+After feature extraction, the processed modalities are passed to the BottleneckFusionModel for inference. If any modality is unavailable, it is replaced with zero tensors to ensure robustness of the system under partial input conditions. The model outputs are converted into probabilities using a sigmoid activation function, and the final prediction is obtained by selecting the emotion class with the highest probability.
+
+For development and testing purposes, the backend exposes automatically generated API documentation via Swagger UI, accessible at \texttt{/docs}, which allows direct interaction with the inference pipeline and inspection of response structures.
+
+
+\section{Integration of Frontend and Backend}
+
+The frontend and backend are integrated through a REST API. The frontend sends video files to the backend using a multipart POST request. The backend processes the file and returns a structured JSON response containing the predicted emotion, confidence score, class probabilities, transcript, modality availability, and inference time.
+
+This separation of responsibilities makes the system easier to maintain. The frontend is responsible only for interaction and visualization, while the backend handles all computationally intensive tasks. This design also allows the model to be updated independently from the user interface
+
+
+\section{Database Design}
+
+The current implementation does not include a persistent database. This is a deliberate design decision because the developed system works as a stateless inference prototype. The backend processes each request independently and does not store user data or uploaded videos.
+
+Because of this, an entity-relationship diagram is not required for the current version of the system. The main data objects exist only during request processing. These objects include the uploaded video file, extracted features, and prediction response.
+
+If the system is extended in the future, a database layer such as PostgreSQL could be added to store users, uploaded file metadata, prediction history, and model versions. However, for the current prototype, excluding persistent storage reduces complexity and improves privacy.

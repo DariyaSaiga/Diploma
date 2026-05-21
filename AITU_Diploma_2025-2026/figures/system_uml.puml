@@ -1,0 +1,81 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+title Multimodal Emotion Recognition System Architecture
+
+actor User
+
+package "Frontend (React / Next.js)" {
+    [Web UI] as frontend
+    [Video Upload Component] as upload
+    [Results Dashboard] as dashboard
+}
+
+package "Backend (FastAPI)" {
+    [API Gateway\n/api/analyze/video] as api
+    [Preprocessing Pipeline] as preprocess
+    [Audio Extraction (ffmpeg)] as audio
+    [Speech-to-Text (Whisper)] as whisper
+    [BERT Tokenizer] as bert
+    [Facial Feature Extraction\n(py-feat / OpenFace)] as vision
+}
+
+package "ML Inference Engine" {
+    [BottleneckFusionModel] as model
+    [Text Encoder (BERT frozen)] as text_enc
+    [Audio Encoder (Conv1D)] as audio_enc
+    [Visual Encoder (Conv1D/BiLSTM)] as vision_enc
+    [Attention Bottleneck Fusion] as fusion
+    [Emotion Classifier Head] as classifier
+}
+
+package "External Tools" {
+    [ffmpeg] as ffmpeg
+    [faster-whisper] as whisper_lib
+    [OpenFace / py-feat] as feat
+}
+
+database "Temporary Storage\n(video files)" as storage
+
+' ---------------- USER FLOW ----------------
+User --> frontend
+
+frontend --> upload
+upload --> api : POST video file
+
+' ---------------- BACKEND PIPELINE ----------------
+api --> storage : save temp video
+api --> preprocess
+
+preprocess --> audio
+audio --> ffmpeg : extract wav
+audio --> whisper
+whisper --> whisper_lib
+
+preprocess --> bert
+preprocess --> vision
+vision --> feat
+
+' ---------------- MODEL ----------------
+preprocess --> model
+
+model --> text_enc
+model --> audio_enc
+model --> vision_enc
+
+text_enc --> fusion
+audio_enc --> fusion
+vision_enc --> fusion
+
+fusion --> classifier
+
+classifier --> api : emotion + probabilities
+api --> frontend : JSON response
+
+frontend --> dashboard
+
+storage --> api : cleanup temp file
+
+@enduml

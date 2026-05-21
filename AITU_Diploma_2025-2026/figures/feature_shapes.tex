@@ -1,0 +1,43 @@
+\begin{figure}[H]
+\centering
+\resizebox{0.95\textwidth}{!}{
+\begin{tikzpicture}[
+    node distance=0.8cm and 1.1cm,
+    block/.style={
+        rectangle,
+        draw,
+        rounded corners=3pt,
+        align=center,
+        minimum width=3.0cm,
+        minimum height=0.85cm,
+        font=\small
+    },
+    arrow/.style={-Latex, thick}
+]
+
+\node[block] (text1) {Text tokens\\$[B,50]$};
+\node[block, right=of text1] (text2) {BERT hidden states\\$[B,50,768]$};
+\node[block, right=of text2] (text3) {Text projection\\$[B,50,128]$};
+
+\node[block, below=1.0cm of text1] (audio1) {COVAREP features\\$[B,60,74]$};
+\node[block, right=of audio1] (audio2) {Conv1D + Positional Encoding\\$[B,60,128]$};
+\node[block, right=of audio2] (audio3) {Mean pooling\\$[B,128]$};
+
+\node[block, below=1.0cm of audio1] (vision1) {OpenFace features\\$[B,60,35]$};
+\node[block, right=of vision1] (vision2) {Conv1D + Positional Encoding\\$[B,60,128]$};
+\node[block, right=of vision2] (vision3) {Mean pooling\\$[B,128]$};
+
+\draw[arrow] (text1) -- (text2);
+\draw[arrow] (text2) -- (text3);
+
+\draw[arrow] (audio1) -- (audio2);
+\draw[arrow] (audio2) -- (audio3);
+
+\draw[arrow] (vision1) -- (vision2);
+\draw[arrow] (vision2) -- (vision3);
+
+\end{tikzpicture}
+}
+\caption{Feature tensor shapes for text, audio, and visual modalities.}
+\label{fig:feature_shapes}
+\end{figure}

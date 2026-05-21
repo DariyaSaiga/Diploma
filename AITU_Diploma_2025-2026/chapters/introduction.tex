@@ -1,0 +1,42 @@
+% ============================================================
+% File: introduction.tex
+% Chapter 1: Introduction
+% ============================================================
+
+\chapter{Introduction}
+\label{chap:introduction}
+
+\setlength{\parskip}{1em}
+
+Emotion recognition has become an important research direction in artificial intelligence because modern digital communication increasingly relies on text, audio, and video. People express emotions not only through the meaning of words, but also through voice tone, facial expressions, and other non-verbal signals. As communication moves into online platforms, video conferencing, educational environments, and intelligent assistants, automatic understanding of human affect becomes more relevant for both research and practice.
+
+In affective computing, emotion recognition aims to identify human emotional states from observable signals. Such systems may be useful in human--computer interaction, digital education, mental health monitoring, social media analysis, and assistive technologies. Kalateh et al. describe multimodal emotion recognition as a field that combines different sources of human expression in order to improve the reliability of emotion analysis \cite{kalateh2024systematic}. This is especially important because human emotions are complex and cannot always be correctly interpreted from a single source of information.
+
+Unimodal systems rely on only one modality, such as text, speech, or facial expression, which has clear limitations. Text may show semantic meaning, but it does not fully describe how the speaker said something. Audio can capture vocal cues such as pitch and rhythm, but may not contain enough semantic information. Visual features represent facial expressions and head movements, but they may be unreliable when video quality is low. For this reason, multimodal emotion recognition combines textual, acoustic, and visual information to obtain a more complete representation of human emotion \cite{koromilas2021deep}.
+
+The CMU-MOSEI dataset is one of the most widely used benchmarks for multimodal sentiment and emotion analysis. Zadeh et al. introduced it as a large-scale dataset collected from online videos, containing text, audio, and visual modalities \cite{zadeh2018multimodal}. CMU-MOSEI includes six emotion categories: happiness, sadness, anger, fear, disgust, and surprise. A major challenge is class imbalance, as happiness accounts for over 53\% of samples, while fear and surprise are rare. Nguyen et al. emphasize that imbalanced datasets require special attention to minority classes and appropriate evaluation metrics \cite{nguyen2025enhanced}. For this reason, this project uses macro-F1 as the main metric, which gives equal importance to all emotion classes.
+
+Another key challenge is multimodal fusion. Transformer-based models such as the Multimodal Transformer by Tsai et al. introduced cross-modal attention for unaligned sequences and demonstrated the importance of learning interactions between modalities \cite{tsai2019multimodal}. However, full cross-modal attention can be computationally expensive. Attention bottleneck mechanisms address this limitation. Nagrani et al. proposed the Multimodal Bottleneck Transformer, where a small set of bottleneck tokens controls information exchange between modalities instead of allowing all tokens to attend to each other directly \cite{nagrani2021attention}. Later works adapted this idea to emotion recognition. He et al. proposed a domain-separated bottleneck attention fusion framework \cite{he2024domain}, and Nguyen et al. extended bottleneck transformers to address class imbalance through adaptive loss design \cite{nguyen2025enhanced}.
+
+\section*{Research Aim}
+
+The aim of this diploma project is to develop and evaluate a multimodal emotion recognition system based on an attention bottleneck mechanism for six-emotion classification using textual, acoustic, and visual modalities from the CMU-MOSEI dataset.
+
+\section*{Research Objectives}
+
+To achieve this aim, the following objectives are defined:
+
+\begin{itemize}
+    \item to study existing approaches to multimodal emotion recognition and attention-based fusion methods;
+    \item to analyze the CMU-MOSEI dataset and prepare multimodal features for training;
+    \item to design and implement a multimodal architecture using an attention bottleneck mechanism;
+    \item to train the model under class imbalance conditions using weighted loss and regularization techniques;
+    \item to evaluate the system using macro-F1, weighted accuracy, and per-class metrics;
+    \item to compare the proposed bottleneck fusion approach with a simpler fusion baseline.
+\end{itemize}
+
+The research is guided by several main questions. First, how can textual, acoustic, and visual features be effectively combined for emotion recognition on CMU-MOSEI? Second, whether an attention bottleneck mechanism can improve multimodal fusion compared to a simpler late fusion baseline. Third, how class imbalance affects recognition of rare emotions such as fear and surprise. Fourth, which evaluation metrics provide the most meaningful assessment of model performance in an imbalanced multimodal setting.
+
+The scope of this project is limited to prototype-level development and experimental evaluation. The system uses precomputed multimodal features instead of raw audio and video processing, which allows the research to focus on multimodal fusion rather than low-level feature extraction. The system is not intended as a production-ready real-time application.
+
+The rest of this report is organized as follows. Chapter~\ref{chap:literature_review} reviews existing research on multimodal emotion recognition, CMU-MOSEI, feature extraction, fusion methods, and bottleneck attention mechanisms. Chapter~\ref{chap:methodology} describes the research methodology, dataset preparation, preprocessing, evaluation metrics, and experimental setup. Chapter~\ref{chap:system_design} presents the system design and implementation. Chapter~\ref{chap:results} reports the experimental results. Chapter~\ref{chap:discussion} discusses the findings, limitations, and future work. Chapter~\ref{chap:conclusion} summarizes the main conclusions.

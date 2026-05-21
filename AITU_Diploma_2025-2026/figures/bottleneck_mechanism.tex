@@ -1,0 +1,70 @@
+% ============================================================
+% Figure: bottleneck_mechanism.tex  (coloured version)
+% Place in figures/ folder
+% ============================================================
+\begin{figure}[H]
+\centering
+\resizebox{0.92\textwidth}{!}{
+\begin{tikzpicture}[
+    node distance=0.9cm and 1.4cm,
+    tblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.9cm, minimum height=0.85cm, font=\small,
+        fill=colText!18, draw=colText!70, line width=0.8pt},
+    ablock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.9cm, minimum height=0.85cm, font=\small,
+        fill=colAudio!18, draw=colAudio!70, line width=0.8pt},
+    vblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.9cm, minimum height=0.85cm, font=\small,
+        fill=colVision!18, draw=colVision!70, line width=0.8pt},
+    bblock/.style={rectangle, rounded corners=5pt, align=center,
+        minimum width=3.3cm, minimum height=1.4cm, font=\small,
+        fill=colBottle!20, draw=colBottle!80, line width=1.2pt},
+    noteblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=3.3cm, minimum height=0.8cm, font=\scriptsize,
+        fill=colBottle!8, draw=colBottle!40, line width=0.6pt, dashed},
+    tarrT/.style={-{Stealth[length=4pt]}, line width=0.9pt, color=colText!80},
+    tarrA/.style={-{Stealth[length=4pt]}, line width=0.9pt, color=colAudio!80},
+    tarrV/.style={-{Stealth[length=4pt]}, line width=0.9pt, color=colVision!80},
+    tarrB/.style={-{Stealth[length=4pt]}, line width=0.9pt, color=colBottle!80},
+    darrB/.style={-{Stealth[length=3pt]}, line width=0.6pt, dashed, color=colBottle!60},
+]
+
+%% ── Left: modality inputs ────────────────────────────────
+\node[tblock] (text)   {Text tokens\\{\scriptsize$T \in \mathbb{R}^{50 \times 128}$}};
+\node[ablock, below=0.9cm of text]   (audio)  {Audio tokens\\{\scriptsize$A \in \mathbb{R}^{60 \times 128}$}};
+\node[vblock, below=0.9cm of audio]  (vision) {Visual tokens\\{\scriptsize$V \in \mathbb{R}^{60 \times 128}$}};
+
+%% ── Centre: bottleneck ───────────────────────────────────
+\node[bblock, right=2.2cm of audio] (bn) {
+    \textbf{Bottleneck Tokens}\\[2pt]
+    {\scriptsize$B \in \mathbb{R}^{16 \times 128}$}\\
+    {\scriptsize learnable parameters}
+};
+
+%% ── Note below bottleneck ────────────────────────────────
+\node[noteblock, below=0.7cm of bn] (note) {
+    compact communication channel\\
+    avoids full pairwise attention
+};
+\draw[darrB] (note.north) -- (bn.south);
+
+%% ── Right: updated outputs ───────────────────────────────
+\node[tblock, right=2.2cm of bn, yshift=1.3cm]  (textout)   {Updated text tokens};
+\node[ablock, right=2.2cm of bn]                 (audioout)  {Updated audio tokens};
+\node[vblock, right=2.2cm of bn, yshift=-1.3cm]  (visionout) {Updated visual tokens};
+
+%% ── Compression arrows (left → bottleneck) ───────────────
+\draw[tarrT] (text.east)   -- node[above, font=\scriptsize, color=colText!80]   {cross-attn} (bn.west);
+\draw[tarrA] (audio.east)  -- node[above, font=\scriptsize, color=colAudio!80]  {cross-attn} (bn.west);
+\draw[tarrV] (vision.east) -- node[below, font=\scriptsize, color=colVision!80] {cross-attn} (bn.west);
+
+%% ── Redistribution arrows (bottleneck → right) ───────────
+\draw[tarrB] (bn.east) -- node[above, font=\scriptsize, color=colBottle!80] {redistribution} (textout.west);
+\draw[tarrB] (bn.east) -- node[above, font=\scriptsize, color=colBottle!80] {redistribution} (audioout.west);
+\draw[tarrB] (bn.east) -- node[below, font=\scriptsize, color=colBottle!80] {redistribution} (visionout.west);
+
+\end{tikzpicture}
+}
+\caption{Bottleneck attention mechanism for cross-modal information exchange. Each modality compresses its information into 16 shared bottleneck tokens through cross-attention. The bottleneck tokens are then averaged across modalities and redistributed back to each stream.}
+\label{fig:bottleneck_mechanism}
+\end{figure}

@@ -54,4 +54,5 @@ result.txt
 result2.txt
 result_prep.txt
 tmp/
-temp/
+temp/.claude/
+.claude/

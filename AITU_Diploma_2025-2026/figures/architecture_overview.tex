@@ -1,0 +1,109 @@
+% ============================================================
+% Figure: inference_pipeline.tex  (coloured version)
+% Place in figures/ folder
+% ============================================================
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tikzpicture}[
+    node distance=0.7cm and 0.95cm,
+    %% input
+    inblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.4cm, minimum height=0.85cm, font=\small,
+        fill=colBg, draw=colArrow!60, line width=0.8pt},
+    %% audio row
+    ablock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.4cm, minimum height=0.85cm, font=\small,
+        fill=colAudio!18, draw=colAudio!70, line width=0.8pt},
+    %% vision row
+    vblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.4cm, minimum height=0.85cm, font=\small,
+        fill=colVision!18, draw=colVision!70, line width=0.8pt},
+    %% text row
+    tblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.4cm, minimum height=0.85cm, font=\small,
+        fill=colText!18, draw=colText!70, line width=0.8pt},
+    %% model + output
+    mblock/.style={rectangle, rounded corners=5pt, align=center,
+        minimum width=2.6cm, minimum height=2.0cm, font=\small,
+        fill=colBottle!15, draw=colBottle!70, line width=1.0pt},
+    oblock/.style={rectangle, rounded corners=4pt, align=center,
+        minimum width=2.4cm, minimum height=0.85cm, font=\small,
+        fill=colFuse!15, draw=colFuse!70, line width=0.8pt},
+    %% arrows
+    tarrA/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colAudio!80},
+    tarrV/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colVision!80},
+    tarrT/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colText!80},
+    tarrM/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colBottle!80},
+    tarrO/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colFuse!80},
+    tarrIn/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colArrow!70},
+]
+
+%% ── Input node ───────────────────────────────────────────
+\node[inblock] (video) {\textbf{Raw video}\\{\scriptsize .mp4 / .mov / .webm}};
+
+%% ── Audio row ────────────────────────────────────────────
+\node[ablock, right=1.1cm of video, yshift=1.7cm]  (ffmpegA)   {ffmpeg\\{\scriptsize audio extract}};
+\node[ablock, right=0.9cm of ffmpegA]               (opensmile) {opensmile\\{\scriptsize ComParE LLD}};
+\node[ablock, right=0.9cm of opensmile]             (audiofeat) {Audio tensor\\{\scriptsize$[1,60,74]$}};
+
+%% ── Vision row ───────────────────────────────────────────
+\node[vblock, right=1.1cm of video]                 (ffmpegV)   {ffmpeg\\{\scriptsize compress video}};
+\node[vblock, right=0.9cm of ffmpegV]               (pyfeat)    {py-feat\\{\scriptsize AU extraction}};
+\node[vblock, right=0.9cm of pyfeat]                (visionfeat){Vision tensor\\{\scriptsize$[1,60,35]$}};
+
+%% ── Text row ─────────────────────────────────────────────
+\node[tblock, right=1.1cm of video, yshift=-1.7cm]  (whisper)   {faster-whisper\\{\scriptsize speech-to-text}};
+\node[tblock, right=0.9cm of whisper]               (tokenizer) {BERT tokenizer};
+\node[tblock, right=0.9cm of tokenizer]             (textfeat)  {Text tensors\\{\scriptsize$[1,50]$}};
+
+%% ── Model ────────────────────────────────────────────────
+\node[mblock, right=1.2cm of visionfeat] (model) {
+    \textbf{Bottleneck}\\
+    \textbf{Fusion Model}\\[3pt]
+    {\scriptsize sigmoid output}
+};
+
+%% ── Output ───────────────────────────────────────────────
+\node[oblock, right=1.0cm of model] (pred) {
+    \textbf{Emotion}\\
+    \textbf{Prediction}\\
+    {\scriptsize 6 probabilities}
+};
+
+%% ── Arrows: video → rows ─────────────────────────────────
+\draw[tarrIn] (video.east) -- (ffmpegA.west);
+\draw[tarrIn] (video.east) -- (ffmpegV.west);
+\draw[tarrIn] (video.east) -- (whisper.west);
+
+%% ── Arrows: audio row ────────────────────────────────────
+\draw[tarrA] (ffmpegA)   -- (opensmile);
+\draw[tarrA] (opensmile) -- (audiofeat);
+\draw[tarrA] (audiofeat) -- (model);
+
+%% ── Arrows: vision row ───────────────────────────────────
+\draw[tarrV] (ffmpegV)   -- (pyfeat);
+\draw[tarrV] (pyfeat)    -- (visionfeat);
+\draw[tarrV] (visionfeat)-- (model);
+
+%% ── Arrows: text row ─────────────────────────────────────
+\draw[tarrT] (whisper)   -- (tokenizer);
+\draw[tarrT] (tokenizer) -- (textfeat);
+\draw[tarrT] (textfeat)  -- (model);
+
+%% ── Arrow: model → output ────────────────────────────────
+\draw[tarrO] (model) -- (pred);
+
+%% ── Row labels ───────────────────────────────────────────
+\node[font=\scriptsize\sffamily\bfseries, text=colAudio!80,
+      left=0.2cm of ffmpegA] {\rotatebox{90}{AUDIO}};
+\node[font=\scriptsize\sffamily\bfseries, text=colVision!80,
+      left=0.2cm of ffmpegV] {\rotatebox{90}{VISION}};
+\node[font=\scriptsize\sffamily\bfseries, text=colText!80,
+      left=0.2cm of whisper]  {\rotatebox{90}{TEXT}};
+
+\end{tikzpicture}
+}
+\caption{Inference pipeline of the deployed system. A raw video file is processed through three parallel modality-specific pipelines. Audio features are extracted via opensmile, visual features via py-feat, and text via faster-whisper and BERT tokenization. All three streams are passed to the BottleneckFusionModel to produce the final emotion prediction.}
+\label{fig:inference_pipeline}
+\end{figure}

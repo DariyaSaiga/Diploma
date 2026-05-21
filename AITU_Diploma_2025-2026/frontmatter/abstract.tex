@@ -1,0 +1,18 @@
+%
+% File: abstract.tex
+% Author: Tengxiang Li
+%
+
+\chapter{Abstract}
+\begin{SingleSpace}
+This diploma project presents the development and evaluation of a multimodal emotion recognition system based on an attention bottleneck mechanism. The system addresses the CMU-MOSEI six-emotion multi-label classification task and uses three input modalities: text, audio, and visual information. The target emotion categories are happiness, sadness, anger, surprise, disgust, and fear.
+
+The proposed architecture combines frozen BERT text representations, COVAREP acoustic features, and OpenFace facial action unit features. These modality-specific representations are projected into a shared hidden space and fused through 16 learnable bottleneck tokens. This design allows controlled cross-modal information exchange without full pairwise attention between all modality tokens.
+
+The model was evaluated using macro-averaged F1 score as the main metric, with average weighted accuracy and per-class F1 used as additional measures. The proposed bottleneck fusion model outperformed the implemented late fusion and MulT-style baselines. It achieved an Avg.~F1 of 0.4854 with the default threshold and 0.4942 after per-class threshold tuning. The largest improvements were observed for minority emotions, especially fear and surprise.
+
+The project also includes a prototype FastAPI backend that processes raw video input, extracts text, audio, and visual features, and returns emotion probabilities through a REST API. The results show that attention bottleneck fusion can improve multimodal emotion recognition under class imbalance, while feature quality and preprocessing speed remain important limitations for future work.
+
+\keywords{multimodal emotion recognition, CMU-MOSEI, attention bottleneck mechanism, BERT, COVAREP, OpenFace, macro-F1}
+\end{SingleSpace}
+% \clearpage

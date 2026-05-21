@@ -1,0 +1,95 @@
+% ============================================================
+% Figure: modality_dropout.tex
+% ============================================================
+
+\begin{figure}[H]
+\centering
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.6cm and 1.0cm,
+    tblock/.style={
+        rectangle, rounded corners=4pt, align=center,
+        minimum width=2.7cm, minimum height=0.75cm, font=\small,
+        fill=colText!18, draw=colText!70, line width=0.8pt
+    },
+    ablock/.style={
+        rectangle, rounded corners=4pt, align=center,
+        minimum width=2.7cm, minimum height=0.75cm, font=\small,
+        fill=colAudio!18, draw=colAudio!70, line width=0.8pt
+    },
+    vblock/.style={
+        rectangle, rounded corners=4pt, align=center,
+        minimum width=2.7cm, minimum height=0.75cm, font=\small,
+        fill=colVision!18, draw=colVision!70, line width=0.8pt
+    },
+    zblock/.style={
+        rectangle, rounded corners=4pt, align=center,
+        minimum width=2.7cm, minimum height=0.75cm, font=\small,
+        fill=gray!12, draw=gray!55, line width=0.8pt, dashed
+    },
+    mblock/.style={
+        rectangle, rounded corners=5pt, align=center,
+        minimum width=2.3cm, minimum height=2.0cm, font=\small,
+        fill=colBottle!15, draw=colBottle!70, line width=1.0pt
+    },
+    lblock/.style={
+        rectangle, rounded corners=4pt, align=center,
+        minimum width=2.1cm, minimum height=0.7cm, font=\scriptsize,
+        fill=colFuse!12, draw=colFuse!60, line width=0.7pt
+    },
+    note/.style={
+        font=\scriptsize, align=center, text=gray!70
+    },
+    title/.style={
+        font=\small\sffamily\bfseries, align=center, text=colArrow
+    },
+    tarrT/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colText!80},
+    tarrA/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colAudio!80},
+    tarrV/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colVision!80},
+    tarrZ/.style={-{Stealth[length=3.5pt]}, line width=0.7pt, dashed, color=gray!60},
+    tarrB/.style={-{Stealth[length=4pt]}, line width=0.8pt, color=colBottle!80}
+]
+
+% ---------------- Left side: normal pass ----------------
+\node[title] (titleL) at (0,0) {Normal forward pass};
+
+\node[tblock] (tL) at (0,-1.0) {Text\\$[B,50,128]$};
+\node[ablock] (aL) at (0,-2.0) {Audio\\$[B,60,74]$};
+\node[vblock] (vL) at (0,-3.0) {Vision\\$[B,60,35]$};
+
+\node[mblock] (mL) at (3.3,-2.0) {Bottleneck\\Fusion};
+\node[lblock] (oL) at (6.0,-2.0) {6 logits};
+
+\draw[tarrT] (tL.east) -- (mL.west);
+\draw[tarrA] (aL.east) -- (mL.west);
+\draw[tarrV] (vL.east) -- (mL.west);
+\draw[tarrB] (mL.east) -- (oL.west);
+
+\node[note] at (0,-3.75) {all modalities active};
+
+% ---------------- Separator ----------------
+\node[font=\Large, text=gray!55, align=center] at (7.5,-2.0) {$\Longrightarrow$};
+\node[note] at (7.5,-2.75) {$p=0.05$\\independent};
+
+% ---------------- Right side: dropout pass ----------------
+\node[title] (titleR) at (11.2,0) {Modality dropout};
+
+\node[tblock] (tR) at (11.2,-1.0) {Text\\$[B,50,128]$};
+\node[zblock] (aR) at (11.2,-2.0) {Audio\\$\rightarrow$ zeros};
+\node[vblock] (vR) at (11.2,-3.0) {Vision\\$[B,60,35]$};
+
+\node[mblock] (mR) at (14.5,-2.0) {Bottleneck\\Fusion};
+\node[lblock] (oR) at (17.2,-2.0) {6 logits};
+
+\draw[tarrT] (tR.east) -- (mR.west);
+\draw[tarrZ] (aR.east) -- (mR.west);
+\draw[tarrV] (vR.east) -- (mR.west);
+\draw[tarrB] (mR.east) -- (oR.west);
+
+\node[note] at (11.2,-3.75) {audio stream replaced with zeros};
+
+\end{tikzpicture}%
+}
+\caption{Modality dropout applied during training. With probability $p=0.05$, one non-text modality can be replaced with zeros independently. This regularisation reduces dependence on a single input stream and improves robustness during multimodal fusion.}
+\label{fig:modality_dropout}
+\end{figure}

@@ -1,0 +1,98 @@
+% ============================================================
+% Figure: perclass_f1_comparison.tex
+% Per-class F1 bar chart: Baseline 1 vs Proposed (default) vs Proposed (tuned)
+% Place in figures/ folder
+% Uses pgfplots
+% ============================================================
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=\textwidth,
+    height=7.0cm,
+    bar width=0.22cm,
+    enlarge x limits=0.12,
+    ylabel={F1 Score},
+    ymin=0, ymax=0.85,
+    ytick={0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8},
+    yticklabel={\pgfmathprintnumber[fixed,precision=1]{\tick}},
+    symbolic x coords={Happy, Sad, Anger, Surprise, Disgust, Fear},
+    xtick=data,
+    x tick label style={font=\small},
+    y tick label style={font=\scriptsize},
+    ylabel style={font=\small},
+    grid=major,
+    grid style={gray!15},
+    axis lines=left,
+    legend style={
+        font=\scriptsize,
+        at={(0.5,1.02)},
+        anchor=south,
+        legend columns=3,
+        draw=gray!30,
+        column sep=6pt,
+    },
+    title={\small Per-Class F1 Score Comparison on CMU-MOSEI Test Set},
+    title style={font=\small},
+    % Threshold line at 0.30 for fear/surprise
+    extra y ticks={0.30},
+    extra y tick labels={0.30},
+    extra y tick style={
+        grid=major,
+        grid style={colFuse!60, dashed, line width=0.8pt},
+        tick label style={font=\scriptsize, text=colFuse!80},
+    },
+]
+
+% Baseline 1: CNN + BiLSTM
+\addplot[
+    fill=colAudio!35,
+    draw=colAudio!70,
+    line width=0.5pt,
+] coordinates {
+    (Happy,    0.7183)
+    (Sad,      0.4821)
+    (Anger,    0.4637)
+    (Surprise, 0.1902)
+    (Disgust,  0.4328)
+    (Fear,     0.1834)
+};
+\addlegendentry{Baseline 1 (CNN+BiLSTM)}
+
+% Proposed — default threshold
+\addplot[
+    fill=colBottle!35,
+    draw=colBottle!70,
+    line width=0.5pt,
+] coordinates {
+    (Happy,    0.7661)
+    (Sad,      0.5307)
+    (Anger,    0.5215)
+    (Surprise, 0.2563)
+    (Disgust,  0.5074)
+    (Fear,     0.3122)
+};
+\addlegendentry{Proposed (default thr.)}
+
+% Proposed — tuned threshold
+\addplot[
+    fill=colFuse!45,
+    draw=colFuse!80,
+    line width=0.5pt,
+] coordinates {
+    (Happy,    0.7502)
+    (Sad,      0.5489)
+    (Anger,    0.5301)
+    (Surprise, 0.3214)
+    (Disgust,  0.4987)
+    (Fear,     0.3451)
+};
+\addlegendentry{Proposed (tuned thr.)}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Per-class F1 comparison between Baseline 1 and the proposed model on the CMU-MOSEI test set. The dashed horizontal line at F1=0.30 marks the threshold identified by Nguyen et al.~\cite{nguyen2025enhanced} as a benchmark for rare emotion recognition. The proposed model exceeds this threshold for fear with the default threshold, and for both fear and surprise with tuned thresholds.}
+\label{fig:perclass_f1}
+\end{figure}

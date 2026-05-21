@@ -1,0 +1,176 @@
+% ============================================================
+% File: methodology_structure.tex
+% Chapter 3: Methodology
+% Section titles adapted to the project topic
+% ============================================================
+
+\chapter{Methodology}
+\label{chap:methodology}
+
+% ─────────────────────────────────────────────────────────────
+\section{Research Design}
+\label{sec:research_design}
+
+This work is applied in nature because it focuses on developing and evaluating a functional multimodal emotion recognition system. It does not attempt to propose a new theory of human emotion. Instead, it addresses a practical machine learning task: combining text, audio, and visual information to classify six emotion categories in an imbalanced dataset. The main outcome is an operational neural network and a supporting processing pipeline that can transform multimodal inputs into emotion predictions.
+
+The study follows a design-oriented research logic. The process begins with problem analysis through the literature review, where existing approaches, limitations, and evaluation practices are examined. Based on this analysis, the architecture is designed and then implemented. After that, the baseline and proposed models are trained under the same experimental conditions. The final stage is evaluation using quantitative metrics. This sequence is suitable for deep learning research, where architectures are commonly tested through controlled experiments on established datasets. Koromilas and Giannakopoulos also describe deep multimodal emotion recognition as a field where model development and experimental comparison are central parts of the research process \cite{koromilas2021deep}.
+
+The work has two connected directions. The first direction is experimental and focuses on model performance. A late fusion baseline and an attention bottleneck fusion model are trained on CMU-MOSEI and compared using the same validation and test protocol. This part answers the main research question about whether bottleneck-based fusion improves recognition quality. The second direction is practical and concerns prototype integration. The trained model is prepared for use inside a processing pipeline that can later be connected to the MultiMOOD web interface. In this way, the study is not limited to a notebook experiment, but also considers how the developed solution could be used in an applied software setting.
+
+The evaluation is quantitative. Interviews, surveys, and subjective user assessment are not included because the research questions focus on measurable model performance. The evidence is obtained from macro-F1, weighted accuracy, and per-class F1 scores computed on validation and test sets. These metrics make it possible to compare different variants and examine whether the proposed architecture improves recognition, especially for underrepresented emotion categories.
+
+% ─────────────────────────────────────────────────────────────
+\section{Quantitative Experimental Approach to Emotion Recognition}
+\label{sec:research_method}
+
+This study uses a quantitative experimental approach because its main objective is to measure the performance of machine learning models. In emotion recognition research, model quality is usually evaluated through numerical metrics computed on validation and test data. In this work, the main measures are macro-averaged F1 score, average weighted accuracy, and per-class F1 scores for the six emotion categories. These values allow the proposed bottleneck-based architecture to be compared with the late fusion baseline under identical conditions. Ramyasree et al. use a similar evaluation logic in their multimodal bottleneck transformer study, where accuracy and F1-score are reported as the main indicators of performance \cite{ramyasree2025emotion}.
+
+The quantitative approach is also important because CMU-MOSEI is imbalanced. A general accuracy score may not show whether rare emotions are recognized well. For this reason, macro-F1 and per-class F1 are used to examine results across all categories, not only the dominant ones. This is especially relevant for difficult classes such as fear and surprise.
+
+The same logic is applied to the ablation study. Several configurations are tested under one controlled setup. Each configuration changes a specific part of the architecture or training strategy, such as BERT freezing, the number of averaged BERT layers, auxiliary losses, modality dropout, or threshold tuning. Macro-F1, weighted accuracy, and per-class F1 are then compared to determine the effect of each design choice. This makes the analysis more systematic and helps identify which components contribute most to the final result.
+
+% ─────────────────────────────────────────────────────────────
+\section{Justification of the Experimental Evaluation Approach}
+\label{sec:methodology_justification}
+
+The experimental evaluation approach was selected because it matches the purpose of this work. The central question is whether the attention bottleneck mechanism improves multimodal emotion recognition compared with a simpler fusion baseline. This type of question is best answered through controlled experiments, where both models are trained and tested on the same data under the same conditions. Interviews or subjective observations would not provide the main evidence in this case, because model quality must be assessed through measurable results on unseen samples.
+
+Using a widely accepted dataset and standard metrics also makes the findings easier to compare with previous studies. Koromilas and Giannakopoulos describe deep multimodal emotion recognition as a field where architectures are often evaluated through experimental comparison and numerical results \cite{koromilas2021deep}. CMU-MOSEI is suitable for this purpose because it is widely used in multimodal emotion and sentiment recognition research. If a different dataset or unusual metrics were used, it would be harder to place the results in the context of existing work.
+
+The selected metrics are connected to the properties of CMU-MOSEI. Since the data is imbalanced, plain accuracy may hide weak performance on rare emotions. Mora Melanchthon shows that macro-F1 is useful for CMU-MOSEI because it reflects recognition quality across separate categories more clearly than general accuracy \cite{mora2021unimodal}. Therefore, macro-F1 is used as the primary metric, while weighted accuracy is reported as a secondary measure. This strategy evaluates both overall behaviour and recognition of underrepresented classes.
+
+% ─────────────────────────────────────────────────────────────
+\section{Dataset and Computational Instruments}
+\label{sec:research_instruments}
+
+The main data source for this work is CMU-MOSEI. It provides the training, validation, and test samples used in the experimental part of the study. Zadeh et al. introduced CMU-MOSEI as a large-scale dataset for multimodal language analysis collected from online videos \cite{zadeh2018multimodal}. It contains more than 23,000 annotated video segments and includes text, audio, and visual information. This structure is suitable for the present task because the system is designed to recognize emotions from three complementary input streams.
+
+CMU-MOSEI already contains structured multimodal features and emotion labels. Each sample can be represented through textual, acoustic, and visual streams. This allows modality-specific encoders to process each source separately before fusion. Such a format is important for the proposed bottleneck module, where different inputs are first projected into a shared representation space and then combined. Related studies also use acoustic and visual descriptors such as COVAREP and OpenFace-style features, which makes the dataset appropriate for comparison with previous work \cite{mora2021unimodal,sanjyal2026affectdiff}.
+
+The computational instruments include the software libraries and hardware environment used for preprocessing, training, evaluation, and prototype integration. PyTorch is used as the main deep learning framework for implementing both the baseline and proposed architectures. The HuggingFace Transformers library provides BERT-based text representations. Scikit-learn is used to compute macro-F1, weighted accuracy, and per-class F1. All training experiments are conducted on the Kaggle platform with a Tesla T4 GPU, which is sufficient for the selected model size and batch configuration.
+
+Additional tools support the deployment-oriented preprocessing pipeline. The openSMILE toolkit extracts acoustic descriptors, Py-Feat detects facial action units, and faster-whisper transcribes speech. These tools allow the system to move beyond prepared dataset features and process raw video input in a prototype setting. Thus, the computational setup supports both experimental evaluation and practical implementation.
+
+Figure~\ref{fig:feature_shapes} shows the tensor shape produced by each modality after preprocessing and projection. These shapes remain fixed across the experiments and define the input format expected by the bottleneck fusion model.
+
+\input{figures/feature_shapes}
+
+% ─────────────────────────────────────────────────────────────
+\section{Data Sampling and Class Imbalance in CMU-MOSEI}
+\label{sec:sampling}
+
+The experiments use the train, validation, and test split provided with CMU-MOSEI. A fixed split keeps the setting consistent and makes the results easier to compare with related studies. Before training, utterances with all-zero emotion labels are removed. Since this work focuses on six positive emotion categories, samples without any positive label are excluded from the supervised classification set. After filtering, the dataset contains 13,934 training samples, 1,569 validation samples, and 3,957 test samples. Nguyen et al. use a similar filtering strategy in their Extended Multimodal Bottleneck Transformer study on CMU-MOSEI \cite{nguyen2025enhanced}.
+
+The main sampling issue is class imbalance. The six emotion categories are not represented equally. Happiness is the dominant class and appears in approximately 62.7\% of the training samples, while fear is the rarest category with only 9.6\%. Surprise and disgust are also less frequent. This distribution affects learning because the classifier may recognize common emotions more easily and ignore minority classes. As a result, a model can show acceptable overall performance while still producing weak results for underrepresented categories. This is why macro-F1 and per-class F1 are important in this work.
+
+Figure~\ref{fig:class_distribution} shows the positive ratio for each emotion in the training set. The imbalance shown in the figure motivates several methodological decisions, including class-specific positive weights in the loss function and threshold tuning on the validation set. These choices are introduced later in this chapter and described in more detail in the system design and training sections.
+
+\input{figures/class_distribution}
+
+% ─────────────────────────────────────────────────────────────
+\section{Multimodal Feature Preprocessing Pipeline}
+\label{sec:data_collection}
+
+The preprocessing pipeline converts CMU-MOSEI multimodal features into a fixed tensor format required by the neural network. The original dataset introduced by Zadeh et al. contains text, audio, visual information, and emotion annotations collected from online video segments \cite{zadeh2018multimodal}. In this work, preprocessing does not create a new dataset from participants. It prepares the existing features for training, validation, testing, and later prototype inference.
+
+For the text stream, the available word-level information is converted into sentence-level input and processed with a frozen BERT-base-uncased model. The final representation is obtained by averaging the last four hidden layers of BERT. This produces a tensor of shape $[B, 50, 768]$, where $B$ is the batch size and 50 is the maximum sequence length. Before fusion, a linear projection maps this representation to the shared hidden dimension $[B, 50, 128]$.
+
+For the audio stream, COVAREP descriptors are used. Each sequence contains 74-dimensional vectors over a fixed length of 60 time steps, producing a tensor of shape $[B, 60, 74]$. These values represent speech-related properties such as pitch, spectral characteristics, and voice quality. For the visual stream, OpenFace-style facial features are used. Each sequence contains 35-dimensional facial action unit descriptors over 60 frames, producing a tensor of shape $[B, 60, 35]$. Audio and visual sequences are padded when they are shorter than the required length, and all tensors are converted to 32-bit floating point format.
+
+After preprocessing, the prepared samples are stored in a pickle file for efficient loading. Each item contains text, audio, and visual tensors, a six-dimensional binary emotion label vector, and padding masks for audio and visual sequences. These masks indicate which frames are real observations and which are padding. This storage format allows batches to be loaded consistently across all experiments.
+
+The same general input structure is considered for the prototype pipeline. For new video input, the system can extract audio with \texttt{ffmpeg}, compute acoustic descriptors with \texttt{opensmile}, detect facial action units with \texttt{py-feat}, and transcribe speech using \texttt{faster-whisper}. The recognized text is then tokenized and processed through BERT. This deployment-oriented flow is designed so that inference data follows the same general format as the training samples.
+
+\input{figures/preprocessing_before_after}
+
+\input{figures/modality_dropout}
+% ─────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────
+\section{Evaluation Metrics, Training Protocol, and Ablation Design}
+\label{sec:data_analysis}
+
+The experimental analysis follows three stages. First, the study evaluates the trained models on the test set using standard classification metrics. Second, it compares ablation configurations to measure the effect of individual design choices. Third, it tunes class-specific decision thresholds on the validation set and applies them during final testing.
+
+Macro-averaged F1-score serves as the primary metric. This metric calculates the mean F1-score across the six emotion categories and gives equal importance to each class. This choice matters for CMU-MOSEI because frequent emotions can dominate general accuracy. The study also reports average weighted accuracy as a secondary measure, since it considers the balance between positive and negative predictions for each category. In addition, per-class F1-scores show how well the system recognises each emotion separately. Pan et al. also emphasise class-level analysis in multimodal emotion recognition, because aggregated scores can hide weak results for specific categories \cite{pan2023multimodal}.
+
+\textbf{For each class, the evaluation is based on true positives (TP), false positives (FP), and false negatives (FN).}
+
+Precision is defined as:
+\begin{equation}
+Precision = \frac{TP}{TP + FP}
+\end{equation}
+
+Recall is defined as:
+\begin{equation}
+Recall = \frac{TP}{TP + FN}
+\end{equation}
+
+The F1-score is the harmonic mean of precision and recall:
+\begin{equation}
+F1 = \frac{2 \cdot Precision \cdot Recall}{Precision + Recall}
+\end{equation}
+
+Macro-F1 is computed as:
+\begin{equation}
+Macro\text{-}F1 = \frac{1}{C} \sum_{i=1}^{C} F1_i
+\end{equation}
+
+where $C$ is the number of emotion classes.
+
+Weighted accuracy is defined as:
+\begin{equation}
+Weighted\ Accuracy = \frac{\sum_{i=1}^{C} w_i \cdot TP_i}{\sum_{i=1}^{C} w_i \cdot N_i}
+\end{equation}
+
+where $w_i$ is the weight of class $i$, and $N_i$ is the number of samples in class $i$.
+
+In addition, per-class F1-scores show how well the system recognises each emotion separately.
+
+The training process handles class imbalance with weighted binary cross-entropy loss. Each emotion receives a positive weight based on the ratio between negative and positive samples in the training split. As a result, rare categories create a stronger learning signal during backpropagation. Figure~\ref{fig:positive_weights} presents the computed positive weights. Fear and surprise receive the largest values because they appear less often in the dataset.
+
+\input{figures/positive_weights}
+
+Figure~\ref{fig:training_protocol} summarises the training procedure. The models use the AdamW optimiser with a learning rate of $10^{-4}$ and cosine annealing. Gradient clipping with a maximum norm of 1.0 reduces unstable updates. Training runs for at most 50 epochs, and early stopping monitors validation macro-F1 with a patience of 10 epochs. The BERT encoder remains frozen during training. Modality dropout with probability $p = 0.05$ affects the audio and visual streams independently.
+
+\input{figures/training_protocol}
+
+The ablation study includes eight experimental configurations. Each configuration changes one specific part of the architecture or training strategy, such as BERT freezing, the number of averaged hidden layers, auxiliary losses, modality dropout, or threshold tuning. All experiments use the same split, preprocessing pipeline, and training settings. This setup links changes in macro-F1, weighted accuracy, and per-class F1 to the tested component.
+
+The study performs threshold tuning after training. For each emotion, the decision threshold varies from 0.10 to 0.90 with a step of 0.05. The validation set selects the threshold that gives the highest F1-score for each class. The final test stage then uses these thresholds, and the results also include the default threshold value of 0.5 for comparison.
+
+% ─────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────
+\section{Limitations of the Research Approach}
+\label{sec:limitations}
+
+Several limitations should guide the interpretation of the experimental results. The first limitation concerns the input representations. COVAREP and OpenFace-style descriptors provide compact and interpretable signals, but they contain less information than modern neural audio and visual encoders. For example, systems that use VGGish or ResNet18 can extract richer modality representations than handcrafted descriptors. Therefore, this study shows what the selected feature format and architecture can achieve, not the maximum possible performance of bottleneck fusion in general. Koromilas and Giannakopoulos also note that feature representation quality strongly affects results in multimodal emotion recognition \cite{koromilas2021deep}.
+
+The second limitation concerns language and cultural scope. CMU-MOSEI mainly contains English-language speech from online videos. The study does not evaluate the trained system on other languages, accents, or cultural communication styles. For this reason, its generalisation to multilingual or culturally diverse settings remains uncertain.
+
+Another limitation concerns inference time in the prototype pipeline. Processing a short video may require several seconds because the system needs to extract audio features, detect facial action units, transcribe speech, and run the neural network. This speed suits a research prototype, but it does not yet support real-time interaction.
+
+Finally, the experiments use a fixed dataset split. This keeps the comparison consistent, but it does not test performance across different speaker groups, recording conditions, or datasets. This work does not include cross-dataset evaluation.
+
+% ─────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────
+\section{Validity and Reliability of Experimental Results}
+\label{sec:validity}
+
+The study uses several measures to keep the experimental results consistent and reproducible. A fixed random seed of 42 controls random variation from weight initialisation and data loading. All ablation configurations use the same train, validation, and test split, the same preprocessing pipeline, and the same evaluation code. This setup helps ensure that the observed differences come from the tested design choices rather than inconsistent experimental conditions.
+
+CMU-MOSEI supports external validity because many studies use it for multimodal emotion and sentiment analysis. Its video segments come from real online sources, so it reflects more natural communication than small laboratory datasets with acted emotions. The training process never uses the test set for model selection or threshold tuning. This separation helps the final results reflect generalisation to unseen samples.
+
+Standard metrics also support reliability. The study calculates macro-F1, weighted accuracy, and per-class F1 in the same way for all configurations. Ramyasree et al. note that shared evaluation protocols help researchers compare multimodal emotion recognition models fairly \cite{ramyasree2025emotion}. Recent graph-based work also stresses that ablation variants need identical testing conditions to support reliable conclusions about individual components \cite{anonymous2026context}.
+
+% ─────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────
+\section{Ethical Considerations in Multimodal Emotion Recognition}
+\label{sec:ethics}
+
+The ethical aspect of this work concerns both the dataset and the possible use of emotion recognition technology. Zadeh et al. created CMU-MOSEI from publicly available YouTube videos for academic research purposes \cite{zadeh2018multimodal}. This study does not collect new personal data, recruit participants, or create additional annotations. The experiments use only the prepared dataset and its feature representations.
+
+The MultiMOOD prototype functions as a research demonstration. The system processes submitted video files for inference and should not store them permanently. The pipeline should remove temporary files after processing and should not retain audio, video, or transcript data after prediction. This design reduces privacy risks and keeps users in control of submitted content.
+
+A broader concern involves demographic and cultural bias. Kalateh et al. explain that emotion recognition systems may behave unevenly when training data mostly represents one language, culture, or recording context \cite{kalateh2024systematic}. Since CMU-MOSEI mainly contains English-speaking online videos, the trained system may not work equally well for speakers with different accents, backgrounds, or expression styles. Any use beyond the academic setting should consider this limitation carefully.
+
+Emotion recognition also raises concerns about consent and surveillance. The prototype does not target hidden monitoring or decision-making about individuals. Any future deployment would need explicit consent, a transparent explanation of the prediction process, and clear limits on how users or institutions may use the outputs. This project treats the technology as an experimental tool rather than a final decision-making system.

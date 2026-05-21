@@ -3,7 +3,7 @@
 export const STATS = [
   { value: "6", label: "Emotion classes" },
   { value: "3", label: "Modalities (text, audio, video)" },
-  { value: "87%", label: "Macro-F1 on CMU-MOSEI" },
+  { value: "48,7%", label: "Macro-F1 on CMU-MOSEI" },
   { value: "13,934", label: "Training samples" },
 ];
 
@@ -57,7 +57,7 @@ export const PLANS = [
     featured: false,
     features: [
       "Separate text, audio, vision heads",
-      "Mean-pooled unimodal representations",
+      "Text: linear projection · Audio: 1D-CNN · Vision: BiLSTM",
       "Simple concatenation before classifier",
       "No cross-modal information exchange",
       "Lower Macro-F1 on minority classes",
@@ -69,24 +69,23 @@ export const PLANS = [
     period: "Cross-modal attention via shared learnable bottleneck tokens",
     featured: true,
     features: [
-      "Frozen BERT + Conv1D audio & visual encoders",
-      "16 learnable bottleneck tokens (hidden dim 128)",
-      "2-layer cross-modal attention fusion",
-      "Auxiliary unimodal classification heads",
-      "Modality dropout (p=0.05) for robustness",
-      "Per-class threshold tuning at inference",
+      "Frozen BERT-base-uncased for text representation",
+      "Conv1D encoders for audio and visual modalities",
+      "16 learnable bottleneck tokens with hidden dimension 128",
+      "2-layer bottleneck attention fusion",
+      "Modality dropout and auxiliary losses for robustness",
     ],
   },
   {
     tier: "Ablation Variants",
     price: "Analysis",
-    period: "Systematic component-wise evaluation",
+    period: "Systematic evaluation of model components and training choices",
     featured: false,
     features: [
-      "Single BERT layer vs. mean of last 4 layers",
-      "Modality dropout at p=0, 0.05, 0.10, 0.15",
-      "With vs. without auxiliary losses",
-      "Default threshold 0.5 vs. tuned thresholds",
+      "Frozen vs. online BERT: frozen reaches same Avg. F1, avoids instability",
+      "Modality dropout at p=0, 0.03, 0.05, 0.07, 0.10",
+      "With vs. without auxiliary losses (8 experimental configs tested)",
+      "Per-class threshold tuning 0.10–0.90: Avg. F1 0.4854 → 0.4942",
       "Bottleneck vs. late fusion comparison",
     ],
   },

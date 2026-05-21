@@ -2,9 +2,9 @@ import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
 import StatsSection from "@/components/StatsSection";
 import AboutSection from "@/components/AboutSection";
-import EventsSection from "@/components/EventsSection";
-import ReviewsSection from "@/components/ReviewsSection";
-import PricingSection from "@/components/PricingSection";
+import EventsSection from "@/components/ArchitectureSection";
+import ReviewsSection from "@/components/ResultsSection";
+import PricingSection from "@/components/ComparisonSection";
 import FAQ from "@/components/FAQ";
 import Footer from "@/components/Footer";
 import AudioSection from "@/components/AudioSection";
@@ -23,7 +23,6 @@ export default function Home() {
         <VideoSection />
         <CsvSection />
         <EventsSection />
-        <ReviewsSection />
         <PricingSection />
         <FAQ />
         <Footer />

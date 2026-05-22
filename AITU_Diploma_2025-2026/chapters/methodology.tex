@@ -208,3 +208,95 @@ The MultiMOOD prototype functions as a research demonstration. The system proces
 A broader concern involves demographic and cultural bias. Kalateh et al. explain that emotion recognition systems may behave unevenly when training data mostly represents one language, culture, or recording context \cite{kalateh2024systematic}. Since CMU-MOSEI mainly contains English-speaking online videos, the trained system may not work equally well for speakers with different accents, backgrounds, or expression styles. Any use beyond the academic setting should consider this limitation carefully.
 
 Emotion recognition also raises concerns about consent and surveillance. The prototype does not target hidden monitoring or decision-making about individuals. Any future deployment would need explicit consent, a transparent explanation of the prediction process, and clear limits on how users or institutions may use the outputs. This project treats the technology as an experimental tool rather than a final decision-making system.
+
+% ─────────────────────────────────────────────────────────────
+\section{Mathematical Representation of the Applied Models}
+\label{sec:model_formulations}
+
+This section summarises the main neural architectures and mathematical operations used in the proposed multimodal emotion recognition system. The implemented model combines BERT-based text representations, convolutional feature extraction, bidirectional sequence modelling, and transformer attention mechanisms for multimodal fusion.
+
+The text modality is processed using the BERT-base-uncased transformer encoder. The final sentence representation is obtained by averaging the last four hidden layers:
+
+\begin{equation}
+H_{BERT} =
+\frac{
+H^{(9)} + H^{(10)} + H^{(11)} + H^{(12)}
+}{4}
+\end{equation}
+
+where $H^{(i)}$ denotes the hidden representation produced by the $i$-th BERT layer.
+
+The transformer attention mechanism used inside BERT and the bottleneck fusion module is defined as:
+
+\begin{equation}
+Attention(Q,K,V)
+=
+softmax
+\left(
+\frac{QK^T}{\sqrt{d_k}}
+\right)V
+\end{equation}
+
+where $Q$, $K$, and $V$ represent query, key, and value matrices.
+
+Audio and visual streams are projected into the shared hidden space using one-dimensional convolutional layers. The convolution operation is defined as:
+
+\begin{equation}
+y_t =
+\sum_{i=0}^{k-1}
+w_i x_{t+i}
++
+b
+\end{equation}
+
+where $x$ is the input sequence, $w_i$ are convolution kernel weights, $k$ is the kernel size, and $b$ is the bias term.
+
+The architecture also uses bidirectional sequence modelling. In a BiLSTM layer, forward and backward hidden states are concatenated:
+
+\begin{equation}
+h_t =
+\overrightarrow{LSTM}(x_t)
+\oplus
+\overleftarrow{LSTM}(x_t)
+\end{equation}
+
+where $\oplus$ denotes vector concatenation.
+
+Cross-modal interaction follows the same principle as the MulT transformer architecture, where one modality attends to another through cross-attention:
+
+\begin{equation}
+Attention_{A \rightarrow T}(Q_A,K_T,V_T)
+=
+softmax
+\left(
+\frac{Q_AK_T^T}{\sqrt{d_k}}
+\right)V_T
+\end{equation}
+
+where the audio modality attends to textual representations.
+
+The final training objective uses weighted binary cross-entropy loss:
+
+\begin{equation}
+\mathcal{L}_{BCE} =
+-
+\left[
+y\log(\sigma(x))
++
+(1-y)\log(1-\sigma(x))
+\right]
+\end{equation}
+
+where $y$ is the ground-truth label, $x$ is the predicted logit, and $\sigma(x)$ is the sigmoid activation function.
+
+During inference, class-specific thresholds are applied to convert probabilities into binary predictions:
+
+\begin{equation}
+\hat y =
+\begin{cases}
+1, & p \ge t \\
+0, & p < t
+\end{cases}
+\end{equation}
+
+where $p$ is the predicted probability and $t$ is the selected decision threshold.

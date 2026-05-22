@@ -65,6 +65,10 @@ The main sampling issue is class imbalance. The six emotion categories are not r
 
 Figure~\ref{fig:class_distribution} shows the positive ratio for each emotion in the training set. The imbalance shown in the figure motivates several methodological decisions, including class-specific positive weights in the loss function and threshold tuning on the validation set. These choices are introduced later in this chapter and described in more detail in the system design and training sections.
 
+\begin{equation}
+pos\_weight_i = \frac{N_{negative,i}}{N_{positive,i}}
+\end{equation}
+
 \input{figures/class_distribution}
 
 % ─────────────────────────────────────────────────────────────
@@ -75,11 +79,19 @@ The preprocessing pipeline converts CMU-MOSEI multimodal features into a fixed t
 
 For the text stream, the available word-level information is converted into sentence-level input and processed with a frozen BERT-base-uncased model. The final representation is obtained by averaging the last four hidden layers of BERT. This produces a tensor of shape $[B, 50, 768]$, where $B$ is the batch size and 50 is the maximum sequence length. Before fusion, a linear projection maps this representation to the shared hidden dimension $[B, 50, 128]$.
 
+\begin{equation}
+H_{BERT} = \frac{H^{(9)} + H^{(10)} + H^{(11)} + H^{(12)}}{4}
+\end{equation}
+
 For the audio stream, COVAREP descriptors are used. Each sequence contains 74-dimensional vectors over a fixed length of 60 time steps, producing a tensor of shape $[B, 60, 74]$. These values represent speech-related properties such as pitch, spectral characteristics, and voice quality. For the visual stream, OpenFace-style facial features are used. Each sequence contains 35-dimensional facial action unit descriptors over 60 frames, producing a tensor of shape $[B, 60, 35]$. Audio and visual sequences are padded when they are shorter than the required length, and all tensors are converted to 32-bit floating point format.
 
 After preprocessing, the prepared samples are stored in a pickle file for efficient loading. Each item contains text, audio, and visual tensors, a six-dimensional binary emotion label vector, and padding masks for audio and visual sequences. These masks indicate which frames are real observations and which are padding. This storage format allows batches to be loaded consistently across all experiments.
 
 The same general input structure is considered for the prototype pipeline. For new video input, the system can extract audio with \texttt{ffmpeg}, compute acoustic descriptors with \texttt{opensmile}, detect facial action units with \texttt{py-feat}, and transcribe speech using \texttt{faster-whisper}. The recognized text is then tokenized and processed through BERT. This deployment-oriented flow is designed so that inference data follows the same general format as the training samples.
+
+\begin{equation}
+y_t = \sum_{i=0}^{k-1} w_i x_{t+i} + b
+\end{equation}
 
 \input{figures/preprocessing_before_after}
 
@@ -128,9 +140,21 @@ In addition, per-class F1-scores show how well the system recognises each emotio
 
 The training process handles class imbalance with weighted binary cross-entropy loss. Each emotion receives a positive weight based on the ratio between negative and positive samples in the training split. As a result, rare categories create a stronger learning signal during backpropagation. Figure~\ref{fig:positive_weights} presents the computed positive weights. Fear and surprise receive the largest values because they appear less often in the dataset.
 
+\begin{equation}
+\mathcal{L}_{BCE} =
+- \left[
+y \log(\sigma(x)) +
+(1-y)\log(1-\sigma(x))
+\right]
+\end{equation}
+
 \input{figures/positive_weights}
 
 Figure~\ref{fig:training_protocol} summarises the training procedure. The models use the AdamW optimiser with a learning rate of $10^{-4}$ and cosine annealing. Gradient clipping with a maximum norm of 1.0 reduces unstable updates. Training runs for at most 50 epochs, and early stopping monitors validation macro-F1 with a patience of 10 epochs. The BERT encoder remains frozen during training. Modality dropout with probability $p = 0.05$ affects the audio and visual streams independently.
+
+\begin{equation}
+Attention(Q,K,V)=softmax\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
 
 \input{figures/training_protocol}
 
@@ -138,6 +162,16 @@ The ablation study includes eight experimental configurations. Each configuratio
 
 The study performs threshold tuning after training. For each emotion, the decision threshold varies from 0.10 to 0.90 with a step of 0.05. The validation set selects the threshold that gives the highest F1-score for each class. The final test stage then uses these thresholds, and the results also include the default threshold value of 0.5 for comparison.
 
+\begin{equation}
+\hat{y} =
+\begin{cases}
+1, & p \ge t \\
+0, & p < t
+\end{cases}
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────
+% ─────────────────────────────────────────────────────────────
 % ─────────────────────────────────────────────────────────────
 % ─────────────────────────────────────────────────────────────
 \section{Limitations of the Research Approach}

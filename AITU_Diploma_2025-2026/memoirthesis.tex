@@ -27,7 +27,7 @@
 
 \usepackage{amsfonts}
 \usepackage{amsmath}
-
+\usepackage{stmaryrd}
 \usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{newlfont}
@@ -304,25 +304,25 @@
 \frontmatter
 \pagenumbering{roman}
 
-%\input{frontmatter/title}
+\input{frontmatter/title}
 
 \input{frontmatter/abstract}
 \clearemptydoublepage
 
-%\input{frontmatter/dedication}
+\input{frontmatter/dedication}
 
-%\input{frontmatter/declaration}
+\input{frontmatter/declaration}
 
-%\input{frontmatter/definitions}
-%\input{frontmatter/dda}
+\input{frontmatter/definitions}
+\input{frontmatter/dda}
 
-%\listoftables
-%\addtocontents{lot}{\par\nobreak\textbf{{\scshape Table} \hfill Page}\par\nobreak}
-%\newpage
+\listoftables
+\addtocontents{lot}{\par\nobreak\textbf{{\scshape Table} \hfill Page}\par\nobreak}
+\newpage
 
-%\listoffigures
-%\addtocontents{lof}{\par\nobreak\textbf{{\scshape Figure} \hfill Page}\par\nobreak}
-%\newpage
+\listoffigures
+\addtocontents{lof}{\par\nobreak\textbf{{\scshape Figure} \hfill Page}\par\nobreak}
+\newpage
 
 \addtocontents{toc}{\par\nobreak \mbox{}\hfill{\bf }\par\nobreak}
 
@@ -367,8 +367,10 @@
 % -------------------------------------------------------------------------
 % Appendix
 % -------------------------------------------------------------------------
-%\appendix
-%\import{chapters/appendices/}{app0A.tex}
-%\clearemptydoublepage
+% Stop appendix figures from appearing in the List of Figures
+\captionsetup[figure]{list=no}
+\appendix
+\import{chapters/appendices/}{app0A.tex}
+\clearemptydoublepage
 
 \end{document}

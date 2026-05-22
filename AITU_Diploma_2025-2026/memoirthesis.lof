@@ -23,18 +23,5 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\contentsline {figure}{\numberline {1}{\ignorespaces System Architecture}}{61}{figure.caption.41}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {2}{\ignorespaces Frontend interface of the emotion recognition system}}{62}{figure.caption.45}%
-\contentsline {figure}{\numberline {3}{\ignorespaces Audio modality prediction results}}{63}{figure.caption.46}%
-\contentsline {figure}{\numberline {4}{\ignorespaces Backend API endpoint configuration}}{63}{figure.caption.47}%
-\contentsline {figure}{\numberline {5}{\ignorespaces Backend processing result output}}{64}{figure.caption.48}%
-\contentsline {figure}{\numberline {6}{\ignorespaces Backend server interface}}{64}{figure.caption.49}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {7}{\ignorespaces Bottleneck Attention Fusion mechanism used in the multimodal model}}{65}{figure.caption.52}%
-\contentsline {figure}{\numberline {8}{\ignorespaces BottleneckLayer implementation in models.py}}{66}{figure.caption.54}%
-\contentsline {figure}{\numberline {9}{\ignorespaces Dataset loading and preprocessing pipeline}}{67}{figure.caption.56}%
-\contentsline {figure}{\numberline {10}{\ignorespaces Visual feature extraction using py-feat}}{68}{figure.caption.58}%
-\contentsline {figure}{\numberline {11}{\ignorespaces Training loop implementation}}{69}{figure.caption.60}%
-\contentsline {figure}{\numberline {12}{\ignorespaces train\_epoch and evaluate functions}}{70}{figure.caption.62}%
-\contentsline {figure}{\numberline {13}{\ignorespaces Video preprocessing and feature extraction pipeline}}{71}{figure.caption.64}%

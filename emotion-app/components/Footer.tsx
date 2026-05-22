@@ -4,11 +4,11 @@ const NAV_LEFT = [
   { href: "#events",  label: "Architecture" },
 ];
 const NAV_RIGHT = [
-  { href: "#pricing",           label: "Comparison" },
-  { href: "#",                  label: "FAQ"         },
-  { href: "https://github.com", label: "GitHub"      },
+  { href: "#pricing", label: "Comparison" },
+  { href: "#faq", label: "FAQ" },
+  { href: "https://github.com/DariyaSaiga/Diploma/tree/new_arch", label: "GitHub" },
 ];
-const SOCIALS = ["Instagram", "GitHub", "Telegram"];
+const SOCIALS = ["GitHub"];
 
 export default function Footer() {
   return (
@@ -20,7 +20,7 @@ export default function Footer() {
           </a>
           <p className="text-sm lg:text-base text-white/40 leading-[1.7]">
             Multimodal Emotion Recognition via Attention Bottleneck Mechanism.
-            Diploma project 2025.
+            Diploma project 2026.
           </p>
         </div>
         <div>
@@ -59,18 +59,21 @@ export default function Footer() {
 
       <div className="flex justify-between items-center pt-7 max-md:flex-col max-md:gap-4 max-md:items-start">
         <div>
-          <p className="text-sm text-white/30">© MultiMOOD 2025</p>
-          <p className="text-sm text-white/30">All rights reserved</p>
+          <p className="text-sm text-white/30">Development of a multimodal emotion recognition system using attention bottleneck mechanism</p>
+          <p className="text-sm text-white/30">Computer Science, IT-2307</p>
+          <p className="text-sm text-white/30">Alpieva L., Ablanova D.</p>
         </div>
         <div className="flex gap-3 flex-wrap">
           {SOCIALS.map((label) => (
             <a
-              key={label}
-              href="#"
-              className="inline-flex items-center px-4 py-2 rounded border border-white/15 text-sm text-white/70 no-underline hover:border-white/50 hover:text-white transition-all duration-200"
-            >
-              {label}
-            </a>
+            key={label}
+            href="https://github.com/DariyaSaiga/Diploma/tree/new_arch"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center px-4 py-2 rounded border border-white/15 text-sm text-white/70 no-underline hover:border-white/50 hover:text-white transition-all duration-200"
+          >
+            {label}
+          </a>
           ))}
         </div>
       </div>

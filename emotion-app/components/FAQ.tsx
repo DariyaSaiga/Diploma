@@ -9,7 +9,7 @@ export default function FAQ() {
   const toggle = (i: number) => setOpenIndex(openIndex === i ? null : i);
 
   return (
-    <section className="grid grid-cols-1 md:grid-cols-2 px-10 py-20 max-md:px-5 max-md:py-12 border-b border-[#e8e8e8] gap-10">
+    <section id="faq" className="grid grid-cols-1 md:grid-cols-2 px-10 py-20 max-md:px-5 max-md:py-12 border-b border-[#e8e8e8] gap-10">
       {/* Left: Q&A */}
       <div>
         <h2

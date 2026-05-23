@@ -101,20 +101,34 @@ class BottleneckLayer(nn.Module):
         self.cross_a2b = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
         self.cross_v2b = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
 
-        # cross-attention: bottleneck tokens → каждая модальность (расширение)
-        self.cross_b2t = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
+        # cross-attention: bottleneck tokens → модальности (расширение)
+        # FIX: только audio и vision получают из bottleneck — текст не трогаем,
+        # так как BERT уже оптимален и разбавление bottleneck'ом деградирует его
         self.cross_b2a = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
         self.cross_b2v = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
 
-        # FFN блоки после attention для каждой модальности
+        # Learnable веса для взвешенного усреднения модальностей в bottleneck
+        # FIX: вместо равного (1/3, 1/3, 1/3) — обучаемые веса
+        self.modal_weights = nn.Parameter(torch.ones(3))  # [w_t, w_a, w_v]
+
+        # FFN блоки
         self.ffn_t = self._make_ffn()
         self.ffn_a = self._make_ffn()
         self.ffn_v = self._make_ffn()
 
-        # LayerNorm
-        self.norm_t = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_a = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_v = nn.LayerNorm(HIDDEN_DIM)
+        # FIX: отдельный LayerNorm для каждой операции (было 1 на 3 использования)
+        self.norm_t1 = nn.LayerNorm(HIDDEN_DIM)   # после self-attn
+        self.norm_a1 = nn.LayerNorm(HIDDEN_DIM)
+        self.norm_v1 = nn.LayerNorm(HIDDEN_DIM)
+
+        self.norm_a2 = nn.LayerNorm(HIDDEN_DIM)   # после bottleneck expand
+        self.norm_v2 = nn.LayerNorm(HIDDEN_DIM)
+
+        self.norm_t3 = nn.LayerNorm(HIDDEN_DIM)   # после FFN
+        self.norm_a3 = nn.LayerNorm(HIDDEN_DIM)
+        self.norm_v3 = nn.LayerNorm(HIDDEN_DIM)
+
+        self.norm_b  = nn.LayerNorm(HIDDEN_DIM)   # для bottleneck токенов
 
     def _make_ffn(self):
         return nn.Sequential(
@@ -126,48 +140,42 @@ class BottleneckLayer(nn.Module):
         )
 
     def forward(self, text, audio, vision, bottleneck, text_mask=None):
-        # text:       [B, 50, HIDDEN_DIM]
-        # audio:      [B, 60, HIDDEN_DIM]
-        # vision:     [B, 60, HIDDEN_DIM]
-        # bottleneck: [B, N_BOTTLENECK, HIDDEN_DIM]
-
-        # ── 1. Self-attention внутри каждой модальности ───────────────────────
-        # Проблема 2: text_mask из датасета передаём сюда
-        # key_padding_mask: True = игнорировать токен (padding)
-        # attention_mask из BERT: 1=реальный, 0=padding → инвертируем
         t_pad = (text_mask == 0) if text_mask is not None else None
 
-        t, _ = self.self_attn_t(text, text, text, key_padding_mask=t_pad)
-        a, _ = self.self_attn_a(audio, audio, audio)
+        # ── 1. Self-attention внутри каждой модальности ───────────────────────
+        t, _ = self.self_attn_t(text,   text,   text,   key_padding_mask=t_pad)
+        a, _ = self.self_attn_a(audio,  audio,  audio)
         v, _ = self.self_attn_v(vision, vision, vision)
 
-        text  = self.norm_t(text + t)
-        audio = self.norm_a(audio + a)
-        vision = self.norm_v(vision + v)
+        text   = self.norm_t1(text   + t)
+        audio  = self.norm_a1(audio  + a)
+        vision = self.norm_v1(vision + v)
 
-        # ── 2. Сжатие: модальности → bottleneck (Q=bottleneck, KV=модальность) ─
-        # Статья: MBT — bottleneck tokens как query, modality tokens как key-value
+        # ── 2. Сжатие: модальности → bottleneck ──────────────────────────────
         bt, _ = self.cross_t2b(bottleneck, text,   text)
         ba, _ = self.cross_a2b(bottleneck, audio,  audio)
         bv, _ = self.cross_v2b(bottleneck, vision, vision)
 
-        # усредняем вклад всех трёх модальностей в bottleneck
-        # Статья: XMBT — mean average operation aggregates bottleneck tokens
-        bottleneck = (bt + ba + bv) / 3.0
+        # FIX 1: взвешенное усреднение (обучаемые веса через softmax)
+        w = torch.softmax(self.modal_weights, dim=0)   # [w_t, w_a, w_v]
+        b_new = w[0] * bt + w[1] * ba + w[2] * bv
 
-        # ── 3. Расширение: bottleneck → модальности (Q=модальность, KV=bottleneck)
-        t2, _ = self.cross_b2t(text,   bottleneck, bottleneck)
+        # FIX 2: residual — bottleneck токены помнят предыдущее состояние
+        bottleneck = self.norm_b(bottleneck + b_new)
+
+        # ── 3. Расширение: bottleneck → только audio и vision ─────────────────
+        # FIX 3: текст НЕ получает из bottleneck — BERT уже оптимален,
+        # пропускание слабых audio/vision обратно в text только добавляет шум
         a2, _ = self.cross_b2a(audio,  bottleneck, bottleneck)
         v2, _ = self.cross_b2v(vision, bottleneck, bottleneck)
 
-        text   = self.norm_t(text   + t2)
-        audio  = self.norm_a(audio  + a2)
-        vision = self.norm_v(vision + v2)
+        audio  = self.norm_a2(audio  + a2)
+        vision = self.norm_v2(vision + v2)
 
         # ── 4. FFN ─────────────────────────────────────────────────────────────
-        text   = self.norm_t(text   + self.ffn_t(text))
-        audio  = self.norm_a(audio  + self.ffn_a(audio))
-        vision = self.norm_v(vision + self.ffn_v(vision))
+        text   = self.norm_t3(text   + self.ffn_t(text))
+        audio  = self.norm_a3(audio  + self.ffn_a(audio))
+        vision = self.norm_v3(vision + self.ffn_v(vision))
 
         return text, audio, vision, bottleneck
 

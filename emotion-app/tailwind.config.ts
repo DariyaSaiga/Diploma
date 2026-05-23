@@ -7,14 +7,7 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {
-      fontFamily: {
-        display: ['var(--font-goldman)', 'sans-serif'],
-        body: ['var(--font-body)', 'sans-serif'],
-        goldman: ['var(--font-goldman)', 'sans-serif'],
-        holtwood: ['var(--font-holtwood)', 'serif'],
-      },
-    },
+    extend: {},
   },
   plugins: [],
 };

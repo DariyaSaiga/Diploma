@@ -9,7 +9,7 @@ export default function FAQ() {
   const toggle = (i: number) => setOpenIndex(openIndex === i ? null : i);
 
   return (
-    <section className="grid grid-cols-1 md:grid-cols-2 px-10 py-20 max-md:px-5 max-md:py-12 border-b border-[#e8e8e8] gap-10">
+    <section id="faq" className="grid grid-cols-1 md:grid-cols-2 px-10 py-20 max-md:px-5 max-md:py-12 border-b border-[#e8e8e8] gap-10">
       {/* Left: Q&A */}
       <div>
         <h2
@@ -49,7 +49,7 @@ export default function FAQ() {
       <div className="md:pl-[60px]">
         <div className="relative aspect-[4/3] bg-[#e8e8e8] rounded mb-5 flex items-center justify-center text-[#999] text-sm overflow-hidden">
           <Image
-            src="/us.jpeg"
+            src="/bazaart.png"
             alt="Us"
             width={400}
             height={300}
@@ -63,30 +63,9 @@ export default function FAQ() {
               fontFamily: "'Press Start 2P', monospace",
             }}
           >
-            <div
-              style={{
-                fontSize: "42px",
-                color: "#ffd250",
-                textShadow:
-                  "4px 0 0 #c8a000, 0 4px 0 #c8a000, 4px 4px 0 #c8a000, -2px 0 0 #c8a000",
-                letterSpacing: "4px",
-              }}
-            >
-              HAPPY
-            </div>
+
             
-            <div
-              style={{
-                fontSize: "26px",
-                color: "#ffffff",
-                marginTop: "10px",
-                textShadow:
-                  "3px 0 0 #666, 0 3px 0 #666, 3px 3px 0 #666",
-                letterSpacing: "3px",
-              }}
-            >
-              100%
-            </div>
+
           </div>
         </div>
             

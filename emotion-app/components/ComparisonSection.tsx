@@ -21,7 +21,7 @@ export default function PricingSection() {
           <div
             key={plan.tier}
             className={`border rounded px-6 py-7 ${
-              plan.featured ? "bg-[#111] text-white border-[#111]" : "border-[#e8e8e8]"
+              plan.featured ? "card-lift-dark bg-[#111] text-white border-[#111]" : "card-lift border-[#e8e8e8]"
             }`}
           >
             <div

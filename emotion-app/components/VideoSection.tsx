@@ -106,7 +106,7 @@ export default function VideoSection() {
               <video ref={videoPreviewRef} src={previewUrl} muted playsInline controls
                 className="block w-full max-h-[260px] object-contain rounded-xl" />
               <button
-                className="absolute bottom-2 right-2 text-xs px-2.5 py-1 rounded-md border border-white/60 bg-black/55 text-white cursor-pointer backdrop-blur-sm"
+                className="btn-press absolute bottom-2 right-2 text-xs px-2.5 py-1 rounded-md border border-white/60 bg-black/55 text-white cursor-pointer backdrop-blur-sm"
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
               >
                 Replace file
@@ -140,7 +140,7 @@ export default function VideoSection() {
         {fileName && <p className="text-base font-medium text-[#111] opacity-70 break-all">{fileName}</p>}
 
         <button
-          className="inline-flex items-center justify-center w-full py-3.5 px-6 text-base font-semibold rounded-lg border-none bg-[#111] text-white cursor-pointer hover:opacity-80 transition-opacity duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="btn-press inline-flex items-center justify-center w-full py-3.5 px-6 text-base font-semibold rounded-lg border-none bg-[#111] text-white cursor-pointer hover:opacity-80 transition-opacity duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
           onClick={analyze} disabled={!file || localProcessing}
         >
           {localProcessing ? 'Processing video…' : 'Analyse Video →'}

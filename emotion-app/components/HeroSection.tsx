@@ -35,7 +35,7 @@ export default function HeroSection() {
 
         <a
           href="#video"
-          className="group relative inline-flex items-center justify-center gap-3 overflow-hidden rounded-full border border-white/45 px-8 py-3.5 text-[13px] font-bold uppercase tracking-[0.18em] text-white no-underline transition-all duration-300 hover:border-red-500 hover:shadow-[0_0_38px_rgba(239,68,68,0.95),0_0_80px_rgba(239,68,68,0.45)]"
+          className="btn-press group relative inline-flex items-center justify-center gap-3 overflow-hidden rounded-full border border-white/45 px-8 py-3.5 text-[13px] font-bold uppercase tracking-[0.18em] text-white no-underline transition-all duration-300 hover:border-red-500 hover:shadow-[0_0_38px_rgba(239,68,68,0.95),0_0_80px_rgba(239,68,68,0.45)]"
         >
           {/* Fill from center */}
           <span className="absolute left-1/2 top-0 h-full w-0 -translate-x-1/2 bg-red-700 transition-all duration-500 ease-out group-hover:w-full" />

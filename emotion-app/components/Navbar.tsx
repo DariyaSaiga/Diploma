@@ -7,7 +7,7 @@ const NAV_LINKS = [
   { href: "#about",   label: "About"        },
   { href: "#events",  label: "Architecture" },
   { href: "#pricing", label: "Comparison"   },
-  { href: "#reviews", label: "Results"      },
+  { href: "#faq", label: "FAQ"      },
 ];
 
 const linkClass =

@@ -7,20 +7,20 @@
 \par \nobreak \textbf {{\scshape Table} \hfill Page}\par \nobreak 
 \addvspace {10pt}
 \addvspace {10pt}
-\contentsline {table}{\numberline {2.1}{\ignorespaces Comparative analysis of related works in multimodal emotion recognition.}}{14}{table.caption.16}%
+\contentsline {table}{\numberline {2.1}{\ignorespaces Comparative analysis of related works in multimodal emotion recognition.\relax }}{14}{table.caption.11}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {3.1}{\ignorespaces CMU-MOSEI dataset statistics before preprocessing (raw HDF5 format).}}{22}{table.caption.19}%
-\contentsline {table}{\numberline {3.2}{\ignorespaces Dataset statistics after preprocessing (stored as \texttt {.pkl}).}}{23}{table.caption.20}%
+\contentsline {table}{\numberline {3.1}{\ignorespaces CMU-MOSEI dataset statistics before preprocessing (raw HDF5 format).\relax }}{22}{table.caption.14}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Dataset statistics after preprocessing (stored as \texttt {.pkl}).\relax }}{23}{table.caption.15}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {4.1}{\ignorespaces Training hyperparameters used for all three architectures.}}{35}{table.caption.26}%
+\contentsline {table}{\numberline {4.1}{\ignorespaces Training hyperparameters used for all three architectures.\relax }}{37}{table.caption.21}%
 \addvspace {10pt}
-\contentsline {table}{\numberline {5.1}{\ignorespaces Comparison of the three implemented architectures on the CMU-MOSEI test set.}}{39}{table.caption.27}%
-\contentsline {table}{\numberline {5.2}{\ignorespaces Ablation study results on the CMU-MOSEI test set. MD = Modality Dropout, Aux = Auxiliary Losses.}}{40}{table.caption.29}%
-\contentsline {table}{\numberline {5.3}{\ignorespaces Effect of modality dropout probability on Avg.~F1 on the test set.}}{41}{table.caption.30}%
-\contentsline {table}{\numberline {5.4}{\ignorespaces Per-class F1 scores on the CMU-MOSEI test set.}}{41}{table.caption.31}%
-\contentsline {table}{\numberline {5.5}{\ignorespaces Optimal per-class thresholds and their effect on test F1.}}{42}{table.caption.33}%
-\contentsline {table}{\numberline {5.6}{\ignorespaces Comparison with published results on CMU-MOSEI six-emotion recognition. Models above the dashed line use compact or handcrafted acoustic and visual features. Models below use pretrained neural audio and visual encoders.}}{43}{table.caption.34}%
-\contentsline {table}{\numberline {5.7}{\ignorespaces Summary of main results on the CMU-MOSEI test set.}}{46}{table.caption.36}%
+\contentsline {table}{\numberline {5.1}{\ignorespaces Comparison of the three implemented architectures on the CMU-MOSEI test set.\relax }}{41}{table.caption.22}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Ablation study results on the CMU-MOSEI test set. MD = Modality Dropout, Aux = Auxiliary Losses.\relax }}{42}{table.caption.24}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces Effect of modality dropout probability on Avg.~F1 on the test set.\relax }}{43}{table.caption.25}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces Per-class F1 scores on the CMU-MOSEI test set.\relax }}{43}{table.caption.26}%
+\contentsline {table}{\numberline {5.5}{\ignorespaces Optimal per-class thresholds and their effect on test F1.\relax }}{44}{table.caption.28}%
+\contentsline {table}{\numberline {5.6}{\ignorespaces Comparison with published results on CMU-MOSEI six-emotion recognition. Models above the dashed line use compact or handcrafted acoustic and visual features. Models below use pretrained neural audio and visual encoders.\relax }}{45}{table.caption.29}%
+\contentsline {table}{\numberline {5.7}{\ignorespaces Summary of main results on the CMU-MOSEI test set.\relax }}{48}{table.caption.31}%
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}

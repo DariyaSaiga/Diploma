@@ -69,3 +69,27 @@ body {
   border-radius: 99px;
   transition: width 0.6s cubic-bezier(.22, 1, .36, 1);
 }
+
+/* Button press animation */
+.btn-press {
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.btn-press:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Card hover lift */
+.card-lift {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-lift:hover {
+  transform: scale(1.025);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.10);
+}
+.card-lift-dark {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-lift-dark:hover {
+  transform: scale(1.025);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}

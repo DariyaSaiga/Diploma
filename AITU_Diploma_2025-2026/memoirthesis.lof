@@ -8,18 +8,18 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\contentsline {figure}{\numberline {3.1}{\ignorespaces Feature tensor shapes for text, audio, and visual modalities.}}{19}{figure.caption.17}%
-\contentsline {figure}{\numberline {3.2}{\ignorespaces Class imbalance in the filtered CMU-MOSEI six-emotion dataset.}}{20}{figure.caption.18}%
-\contentsline {figure}{\numberline {3.3}{\ignorespaces Modality dropout applied during training. With probability $p=0.05$, one non-text modality can be replaced with zeros independently. This regularisation reduces dependence on a single input stream and improves robustness during multimodal fusion.}}{24}{figure.caption.21}%
-\contentsline {figure}{\numberline {3.4}{\ignorespaces Class-specific positive weights used in BCEWithLogitsLoss.}}{26}{figure.caption.22}%
-\contentsline {figure}{\numberline {3.5}{\ignorespaces Training and evaluation protocol used in the experimental study.}}{26}{figure.caption.23}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Feature tensor shapes for text, audio, and visual modalities.\relax }}{19}{figure.caption.12}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Class imbalance in the filtered CMU-MOSEI six-emotion dataset.\relax }}{20}{figure.caption.13}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Modality dropout applied during training. With probability $p=0.05$, one non-text modality can be replaced with zeros independently. This regularisation reduces dependence on a single input stream and improves robustness during multimodal fusion.\relax }}{24}{figure.caption.16}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Class-specific positive weights used in BCEWithLogitsLoss.\relax }}{26}{figure.caption.17}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Training and evaluation protocol used in the experimental study.\relax }}{26}{figure.caption.18}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {4.1}{\ignorespaces Inference pipeline of the deployed system. A raw video file is processed through three parallel modality-specific pipelines. Audio features are extracted via opensmile, visual features via py-feat, and text via faster-whisper and BERT tokenization. All three streams are passed to the BottleneckFusionModel to produce the final emotion prediction.}}{31}{figure.caption.24}%
-\contentsline {figure}{\numberline {4.2}{\ignorespaces Bottleneck attention mechanism for cross-modal information exchange. Each modality compresses its information into 16 shared bottleneck tokens through cross-attention. The bottleneck tokens are then averaged across modalities and redistributed back to each stream.}}{33}{figure.caption.25}%
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Inference pipeline of the deployed system. A raw video file is processed through three parallel modality-specific pipelines. Audio features are extracted via opensmile, visual features via py-feat, and text via faster-whisper and BERT tokenization. All three streams are passed to the BottleneckFusionModel to produce the final emotion prediction.\relax }}{33}{figure.caption.19}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Bottleneck attention mechanism for cross-modal information exchange. Each modality compresses its information into 16 shared bottleneck tokens through cross-attention. The bottleneck tokens are then averaged across modalities and redistributed back to each stream.\relax }}{35}{figure.caption.20}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Avg.~F1 and Avg.~WA scores for the three implemented architectures on the CMU-MOSEI test set. Each step from simpler to more structured fusion produces a consistent improvement in both metrics.}}{39}{figure.caption.28}%
-\contentsline {figure}{\numberline {5.2}{\ignorespaces Per-class F1 comparison between Baseline 1 and the proposed model on the CMU-MOSEI test set. The dashed horizontal line at F1=0.30 marks the threshold identified by Nguyen et al.~\cite {nguyen2025enhanced} as a benchmark for rare emotion recognition. The proposed model exceeds this threshold for fear with the default threshold, and for both fear and surprise with tuned thresholds.}}{42}{figure.caption.32}%
-\contentsline {figure}{\numberline {5.3}{\ignorespaces Training loss (left) and validation macro-F1 (right) over 18 epochs for the proposed model with frozen BERT and Baseline 1. The proposed model reaches its best validation macro-F1 at epoch 3. Early stopping with patience 10 terminates training at epoch 18.}}{45}{figure.caption.35}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Avg.~F1 and Avg.~WA scores for the three implemented architectures on the CMU-MOSEI test set. Each step from simpler to more structured fusion produces a consistent improvement in both metrics.\relax }}{41}{figure.caption.23}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Per-class F1 comparison between Baseline 1 and the proposed model on the CMU-MOSEI test set. The dashed horizontal line at F1=0.30 marks the threshold identified by Nguyen et al.~\cite {nguyen2025enhanced} as a benchmark for rare emotion recognition. The proposed model exceeds this threshold for fear with the default threshold, and for both fear and surprise with tuned thresholds.\relax }}{44}{figure.caption.27}%
+\contentsline {figure}{\numberline {5.3}{\ignorespaces Training loss (left) and validation macro-F1 (right) over 18 epochs for the proposed model with frozen BERT and Baseline 1. The proposed model reaches its best validation macro-F1 at epoch 3. Early stopping with patience 10 terminates training at epoch 18.\relax }}{47}{figure.caption.30}%
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}

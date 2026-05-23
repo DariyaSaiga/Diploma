@@ -114,7 +114,7 @@ export default function AudioSection() {
         </div>
 
         <button
-          className="inline-flex items-center justify-center w-full py-3.5 px-6 text-base font-semibold rounded-lg border-none bg-[#111] text-white cursor-pointer hover:opacity-80 transition-opacity duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="btn-press inline-flex items-center justify-center w-full py-3.5 px-6 text-base font-semibold rounded-lg border-none bg-[#111] text-white cursor-pointer hover:opacity-80 transition-opacity duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
           onClick={analyze} disabled={!file || localProcessing}
         >
           {localProcessing ? 'Analysing…' : 'Analyse Audio →'}

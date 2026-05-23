@@ -15,7 +15,7 @@ This work is applied in nature because it focuses on developing and evaluating a
 
 The study follows a design-oriented research logic. The process begins with problem analysis through the literature review, where existing approaches, limitations, and evaluation practices are examined. Based on this analysis, the architecture is designed and then implemented. After that, the baseline and proposed models are trained under the same experimental conditions. The final stage is evaluation using quantitative metrics. This sequence is suitable for deep learning research, where architectures are commonly tested through controlled experiments on established datasets. Koromilas and Giannakopoulos also describe deep multimodal emotion recognition as a field where model development and experimental comparison are central parts of the research process \cite{koromilas2021deep}.
 
-The work has two connected directions. The first direction is experimental and focuses on model performance. A late fusion baseline and an attention bottleneck fusion model are trained on CMU-MOSEI and compared using the same validation and test protocol. This part answers the main research question about whether bottleneck-based fusion improves recognition quality. The second direction is practical and concerns prototype integration. The trained model is prepared for use inside a processing pipeline that can later be connected to the MultiMOOD web interface. In this way, the study is not limited to a notebook experiment, but also considers how the developed solution could be used in an applied software setting.
+The work has two connected directions. The first direction is experimental and focuses on model performance. Two baselines and the proposed bottleneck attention architecture are trained on CMU-MOSEI and compared under the same validation and test protocol. The first baseline uses late fusion with a BiLSTM visual encoder and no cross-modal interaction. The second baseline adds cross-modal attention between all three streams, following the MulT design. This setup answers the main research question about whether structured bottleneck communication improves recognition beyond simpler fusion strategies. The second direction is practical and concerns prototype integration. The trained model is prepared for use inside a processing pipeline that connects to the MultiMOOD web interface. In this way, the study is not limited to a notebook experiment, but also considers how the developed solution works in an applied software setting.
 
 The evaluation is quantitative. Interviews, surveys, and subjective user assessment are not included because the research questions focus on measurable model performance. The evidence is obtained from macro-F1, weighted accuracy, and per-class F1 scores computed on validation and test sets. These metrics make it possible to compare different variants and examine whether the proposed architecture improves recognition, especially for underrepresented emotion categories.
 
@@ -23,7 +23,7 @@ The evaluation is quantitative. Interviews, surveys, and subjective user assessm
 \section{Quantitative Experimental Approach to Emotion Recognition}
 \label{sec:research_method}
 
-This study uses a quantitative experimental approach because its main objective is to measure the performance of machine learning models. In emotion recognition research, model quality is usually evaluated through numerical metrics computed on validation and test data. In this work, the main measures are macro-averaged F1 score, average weighted accuracy, and per-class F1 scores for the six emotion categories. These values allow the proposed bottleneck-based architecture to be compared with the late fusion baseline under identical conditions. Ramyasree et al. use a similar evaluation logic in their multimodal bottleneck transformer study, where accuracy and F1-score are reported as the main indicators of performance \cite{ramyasree2025emotion}.
+This study uses a quantitative experimental approach because its main objective is to measure the performance of machine learning models. In emotion recognition research, model quality is usually evaluated through numerical metrics computed on validation and test data. In this work, the main measures are macro-averaged F1 score, average weighted accuracy, and per-class F1 scores for the six emotion categories. These values allow the proposed bottleneck-based architecture to be compared with two baselines under identical conditions. Ramyasree et al. use a similar evaluation logic in their multimodal bottleneck transformer study, where accuracy and F1-score are reported as the main indicators of performance \cite{ramyasree2025emotion}.
 
 The quantitative approach is also important because CMU-MOSEI is imbalanced. A general accuracy score may not show whether rare emotions are recognized well. For this reason, macro-F1 and per-class F1 are used to examine results across all categories, not only the dominant ones. This is especially relevant for difficult classes such as fear and surprise.
 
@@ -33,7 +33,7 @@ The same logic is applied to the ablation study. Several configurations are test
 \section{Justification of the Experimental Evaluation Approach}
 \label{sec:methodology_justification}
 
-The experimental evaluation approach was selected because it matches the purpose of this work. The central question is whether the attention bottleneck mechanism improves multimodal emotion recognition compared with a simpler fusion baseline. This type of question is best answered through controlled experiments, where both models are trained and tested on the same data under the same conditions. Interviews or subjective observations would not provide the main evidence in this case, because model quality must be assessed through measurable results on unseen samples.
+The experimental evaluation approach was selected because it matches the purpose of this work. The central question is whether the attention bottleneck mechanism improves multimodal emotion recognition compared with simpler fusion strategies. This type of question is best answered through controlled experiments, where all three architectures train and test on the same data under the same conditions. Interviews or subjective observations would not provide the main evidence in this case, because model quality must be assessed through measurable results on unseen samples.
 
 Using a widely accepted dataset and standard metrics also makes the findings easier to compare with previous studies. Koromilas and Giannakopoulos describe deep multimodal emotion recognition as a field where architectures are often evaluated through experimental comparison and numerical results \cite{koromilas2021deep}. CMU-MOSEI is suitable for this purpose because it is widely used in multimodal emotion and sentiment recognition research. If a different dataset or unusual metrics were used, it would be harder to place the results in the context of existing work.
 
@@ -194,7 +194,7 @@ The study uses several measures to keep the experimental results consistent and 
 
 CMU-MOSEI supports external validity because many studies use it for multimodal emotion and sentiment analysis. Its video segments come from real online sources, so it reflects more natural communication than small laboratory datasets with acted emotions. The training process never uses the test set for model selection or threshold tuning. This separation helps the final results reflect generalisation to unseen samples.
 
-Standard metrics also support reliability. The study calculates macro-F1, weighted accuracy, and per-class F1 in the same way for all configurations. Ramyasree et al. note that shared evaluation protocols help researchers compare multimodal emotion recognition models fairly \cite{ramyasree2025emotion}. Recent graph-based work also stresses that ablation variants need identical testing conditions to support reliable conclusions about individual components \cite{anonymous2026context}.
+Standard metrics also support reliability. The study calculates macro-F1, weighted accuracy, and per-class F1 in the same way for all configurations. Ramyasree et al. note that shared evaluation protocols help researchers compare multimodal emotion recognition models fairly \cite{ramyasree2025emotion}. Recent graph-based work also stresses that ablation variants need identical testing conditions to support reliable conclusions about individual components \cite{khan2026context}.
 
 % ─────────────────────────────────────────────────────────────
 % ─────────────────────────────────────────────────────────────
@@ -262,7 +262,15 @@ h_t =
 
 where $\oplus$ denotes vector concatenation.
 
-Cross-modal interaction follows the same principle as the MulT transformer architecture, where one modality attends to another through cross-attention:
+The second baseline uses cross-modal attention, where each modality attends to both other streams before classification. For a modality $\mathbf{M}$ with the other two streams $\mathbf{M}_1$ and $\mathbf{M}_2$, the update takes the form:
+
+\begin{equation}
+\mathbf{M}' = \mathbf{M}
++ \text{CrossAttn}(\mathbf{M},\, \mathbf{M}_1,\, \mathbf{M}_1)
++ \text{CrossAttn}(\mathbf{M},\, \mathbf{M}_2,\, \mathbf{M}_2)
+\end{equation}
+
+This applies to all three modalities in both directions, following the MulT architecture by Tsai et al. \cite{tsai2019multimodal}. For example, the audio stream attending to text takes the form:
 
 \begin{equation}
 Attention_{A \rightarrow T}(Q_A,K_T,V_T)

@@ -30,7 +30,7 @@ Table~\ref{tab:arch_comparison} compares the three architectures developed in th
 \hline
 \textbf{Architecture} & \textbf{Fusion} & \textbf{Avg.~F1} & \textbf{Avg.~WA} \\
 \hline
-Baseline 1: 1D-CNN + BiLSTM    
+Baseline 1: BERT + Conv1D + BiLSTM    
 & Late fusion           
 & 0.4412 & 0.6389 \\
 
@@ -187,78 +187,45 @@ Table~\ref{tab:lit_comparison} compares the proposed architecture with published
 
 \begin{table}[H]
 \centering
-\caption{Comparison with published results on CMU-MOSEI six-emotion recognition.
-Models above the dashed line use compact or handcrafted acoustic and visual features.
-Models below use pretrained neural audio and visual encoders.}
+\caption{Comparison with published results on CMU-MOSEI six-emotion recognition.}
 \label{tab:lit_comparison}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{l cccc cc cc}
-\hline
+\toprule
+& \multicolumn{4}{c}{\textit{Compact / handcrafted features}}
+& \multicolumn{2}{c}{\textbf{This work}}
+& \multicolumn{2}{c}{\textit{Neural audio \& visual}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
 \textbf{Metric}
-    & \textbf{Affect-Diff}
-    & \textbf{LF-LSTM}
-    & \textbf{LF-Transf.}
-    & \textbf{MulT}
-    & \textbf{Proposed}
-    & \textbf{Proposed}
-    & \textbf{XMBT}
-    & \textbf{MER-SEM-MBT} \\
-    & \cite{sanjyal2026affectdiff}
-    & \cite{nguyen2025enhanced}
-    & \cite{nguyen2025enhanced}
-    & \cite{tsai2019multimodal}
-    & \textbf{(default)}
-    & \textbf{(tuned)}
-    & \cite{nguyen2025enhanced}
-    & \cite{xia2022multimodal} \\
-\hline
+    & \textbf{Affect-Diff}     & \textbf{LF-LSTM}          & \textbf{LF-Transf.}       & \textbf{MulT}
+    & \textbf{Proposed}        & \textbf{Proposed}
+    & \textbf{XMBT}            & \textbf{MER-SEM-MBT} \\
+    & \cite{sanjyal2026affectdiff} & \cite{nguyen2025enhanced} & \cite{nguyen2025enhanced} & \cite{tsai2019multimodal}
+    & \textit{(default)}       & \textit{(tuned)}
+    & \cite{nguyen2025enhanced} & \cite{xia2022multimodal} \\
+\midrule
 \textbf{Avg.~F1}
-    & 0.214
-    & 0.433
-    & 0.444
-    & 0.475
-    & \textbf{0.485}
-    & \textbf{0.494}
-    & 0.496
-    & 0.509 \\
+    & 0.214 & 0.433 & 0.444 & 0.475
+    & \textbf{0.485} & \textbf{0.494}
+    & 0.496 & 0.509 \\[2pt]
 \textbf{Avg.~WA}
-    & --
-    & 0.631
-    & 0.641
-    & 0.672
-    & \textbf{0.678}
-    & 0.667
-    & 0.743
-    & 0.696 \\
-\hdashline
-\textit{Audio encoder}
-    & COVAREP
-    & standard
-    & standard
-    & COVAREP
-    & COVAREP
-    & COVAREP
-    & VGGish
-    & VGGish \\
-\textit{Visual encoder}
-    & OpenFace
-    & standard
-    & standard
-    & Facet
-    & OpenFace
-    & OpenFace
-    & --
-    & ResNet18 \\
-\textit{Text encoder}
-    & GloVe
-    & GloVe
-    & GloVe
-    & GloVe
-    & BERT
-    & BERT
-    & ALBERT
-    & BERT \\
-\hline
+    & --    & 0.631 & 0.641 & 0.672
+    & \textbf{0.678} & 0.667
+    & 0.743 & 0.696 \\
+\midrule
+\textit{Text}
+    & GloVe    & GloVe & GloVe & GloVe
+    & BERT     & BERT
+    & ALBERT   & BERT \\[2pt]
+\textit{Audio}
+    & COVAREP  & std.  & std.  & COVAREP
+    & COVAREP  & COVAREP
+    & VGGish   & VGGish \\[2pt]
+\textit{Visual}
+    & OpenFace & std.  & std.  & Facet
+    & OpenFace & OpenFace
+    & {--}     & ResNet18 \\
+\bottomrule
 \end{tabular}
 }
 \end{table}
@@ -297,8 +264,6 @@ The experiments with the Semantic Enhancement Module also show lower scores. SEM
 \section{Summary of Results}
 \label{sec:summary_results}
 
-Table~\ref{tab:summary} summarises the main numerical results from this chapter.
-
 \begin{table}[H]
 \centering
 \caption{Summary of main results on the CMU-MOSEI test set.}
@@ -307,9 +272,8 @@ Table~\ref{tab:summary} summarises the main numerical results from this chapter.
 \hline
 \textbf{Model} & \textbf{Avg.~F1} & \textbf{Avg.~WA} & \textbf{Fear F1} & \textbf{Surprise F1} \\
 \hline
-Baseline 1: CNN + BiLSTM       & 0.4412 & 0.6389 & 0.1834 & 0.1902 \\
+Baseline 1: BERT + Conv1D + BiLSTM       & 0.4412 & 0.6389 & 0.1834 & 0.1902 \\
 Baseline 2: MulT-style         & 0.4631 & 0.6552 & 0.2214 & 0.2108 \\
-MulT \cite{tsai2019multimodal} & 0.475  & 0.672  & --     & -- \\
 Proposed, default threshold    & 0.4854 & 0.6775 & 0.3122 & 0.2563 \\
 \textbf{Proposed, tuned threshold} & \textbf{0.4942} & 0.6666 & \textbf{0.3451} & \textbf{0.3214} \\
 \hline

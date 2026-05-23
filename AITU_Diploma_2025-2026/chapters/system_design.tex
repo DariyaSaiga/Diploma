@@ -24,70 +24,101 @@ The main interaction flow is as follows. A user uploads a short video through th
 
 \label{sec:model_design}
 
-This project compares three neural architectures. The first two architectures serve as baselines, while the third one represents the proposed solution. All configurations receive the same input representations: BERT-based text tensors, COVAREP acoustic descriptors, and OpenFace facial features. The main difference lies in how each architecture combines these three streams before emotion classification.
+This project compares three neural architectures for multimodal emotion recognition. The first two serve as baselines, while the third represents the proposed solution. All three receive the same inputs: BERT-based text tensors, COVAREP acoustic features, and OpenFace facial descriptors. The key difference is how each architecture combines these streams before classification.
 
 % ─────────────────────────────────────────────────────────────
 
-\subsection{Baseline 1: Late Fusion with 1D-CNN and BiLSTM}
+\subsection{Baseline 1: BERT + Conv1D + BiLSTM with Late Fusion}
 
 \label{subsec:baseline1}
 
-The first baseline follows a simple late fusion strategy. A linear layer projects the text representation into the required hidden size. A one-dimensional convolutional network processes the acoustic stream and captures local temporal patterns across speech frames. A Bidirectional Long Short-Term Memory network processes the visual stream and learns temporal dependencies in both directions across facial action unit sequences.
+The first baseline uses a late fusion strategy with three independent stream encoders. The text branch runs a frozen BERT-base-uncased model and averages its last four hidden layers to form word-level features. A linear layer then projects this representation to a 128-dimensional space. The audio branch applies a one-dimensional convolutional layer with kernel size 3 to the COVAREP descriptors. This captures local temporal patterns across speech frames. The visual branch uses a Bidirectional LSTM with hidden size 64, producing a 128-dimensional output that captures dependencies across facial action unit sequences in both directions.
 
-After encoding, each stream produces a fixed-size vector. The architecture concatenates the text, audio, and visual vectors into one joint representation and sends it to a feed-forward classifier. The classifier then maps the combined vector to six emotion logits. This baseline does not include attention or learned cross-modal interaction. The three streams influence the final prediction only after concatenation.
+Each branch produces a fixed-size vector by mean pooling (audio and visual) or by taking the CLS token (text). The three vectors concatenate into a single representation, which goes to a feed-forward classifier that outputs six emotion logits. No cross-modal interaction occurs before this point. Each stream encodes independently, and the model learns to combine them only at the classification stage.
 
-This configuration gives a simple reference point for comparison. It shows what level of performance the system can reach when the architecture uses separate encoders but does not learn deeper interaction between text, audio, and visual signals. If the more advanced architectures improve the results, the improvement can be linked mainly to the fusion strategy.
+This design serves as the simplest reference point. It shows how far independent encoders can go when they do not communicate with each other during feature learning.
 
 % ─────────────────────────────────────────────────────────────
 
-\subsection{Baseline 2: Late Fusion with Multimodal Transformer}
+\subsection{Baseline 2: BERT + Conv1D + Cross-Modal Attention}
 
 \label{subsec:baseline2}
 
-The second baseline uses a Multimodal Transformer structure inspired by Tsai et al. \cite{tsai2019multimodal}. Unlike the first baseline, this architecture introduces cross-modal attention between pairs of streams. For example, the text stream can attend to the acoustic sequence, and the acoustic stream can attend to the visual sequence. This allows each representation to receive information from another source before the final classification step.
+The second baseline adds explicit cross-modal interaction before classification. It draws inspiration from the Multimodal Transformer by Tsai et al. \cite{tsai2019multimodal}. All three streams first go through Conv1D projections and sine-cosine positional encoding to reach a shared 128-dimensional space.
 
-The architecture still applies late fusion at the end. Cross-modal attention enriches the individual stream representations, but the final classifier receives a concatenated vector. This makes the second baseline more expressive than the 1D-CNN and BiLSTM version, because it allows interaction before classification. However, it still does not use a structured bottleneck that controls information flow between streams.
+The architecture then applies two cross-modal attention layers. Inside each layer, every stream attends to both other streams. For example, the text representation uses attention over the audio and visual sequences, and audio does the same over text and visual. Each modality update takes the form:
 
-This baseline acts as an intermediate comparison point. It helps separate the effect of general cross-modal attention from the effect of bottleneck-based communication. Therefore, the comparison between this architecture and the proposed model shows whether the bottleneck mechanism adds value beyond ordinary transformer-style interaction.
+\begin{equation}
+\mathbf{M}' = \mathbf{M} + \text{CrossAttn}(\mathbf{M},\, \mathbf{M}_1,\, \mathbf{M}_1) + \text{CrossAttn}(\mathbf{M},\, \mathbf{M}_2,\, \mathbf{M}_2)
+\end{equation}
+
+where $\mathbf{M}$ is one modality and $\mathbf{M}_1$, $\mathbf{M}_2$ are the other two. A feed-forward network with residual connections follows each attention step. After two such layers, the CLS token and mean-pooled vectors go to the classifier.
+
+This baseline establishes how much unrestricted pairwise cross-attention contributes. Because every token in one stream can interact with every token in another, the computational cost is $\mathcal{O}(T^2)$. The proposed model addresses this limitation by routing all cross-modal communication through a fixed set of bottleneck tokens.
 
 % ─────────────────────────────────────────────────────────────
 
-\subsection{Proposed Model: BERT + Conv1D + Attention Bottleneck Fusion}
+\subsection{Proposed Model: BERT + Conv1D + Bottleneck Attention Fusion}
 
 \label{subsec:proposed}
 
-The proposed architecture combines three modality-specific encoders with an attention bottleneck fusion module. Figure~\ref{fig:bottleneck_mechanism} illustrates the compression 
-and redistribution process inside one bottleneck layer.
+The proposed architecture keeps the same three-stream front end but replaces unconstrained cross-attention with a bottleneck fusion module. Figure~\ref{fig:bottleneck_mechanism} illustrates the compression and redistribution process inside one bottleneck layer.
 
 \input{figures/bottleneck_mechanism}
 
-\textbf{Text encoder.} The text branch uses BERT-base-uncased as a frozen feature extractor. This decision reduces the risk of overfitting, since fine-tuning all BERT parameters would add about 110 million trainable weights. The architecture forms the text representation by averaging the last four hidden layers of BERT. This produces a tensor of shape $[B, 50, 768]$, where $B$ represents the batch size. A linear projection then maps this tensor to $[B, 50, 128]$.
-\begin{equation}
-\mathbf{T} = \frac{1}{4} \sum_{l=9}^{12} h_l(\mathbf{x}_{\text{text}})
-\end{equation}
-
-\textbf{Audio encoder.} The audio branch receives COVAREP descriptors with shape $[B, 60, 74]$. A one-dimensional convolutional layer with kernel size 3 processes the sequence. Batch normalization, ReLU activation, and sine-cosine positional encoding follow this convolution. The branch outputs a representation with shape $[B, 60, 128]$.
-
-\textbf{Visual encoder.} The visual branch receives OpenFace facial action unit descriptors with shape $[B, 60, 35]$. It uses the same Conv1D-based structure as the audio branch. This keeps the audio and visual processing comparable while still allowing each stream to learn its own parameters. The visual encoder also outputs a tensor of shape $[B, 60, 128]$.
-
-\textbf{Bottleneck fusion.} The fusion module receives the projected text, audio, and visual sequences. It uses 16 learnable bottleneck tokens with dimension 128. The fusion process contains two layers. In each layer, self-attention first refines each stream internally. After that, the bottleneck tokens attend to the three streams and collect relevant information from them. The architecture averages the resulting bottleneck states into one shared representation. Then a second cross-attention step sends this shared information back to the modality-specific streams. A feed-forward network with residual connections completes the layer.
+\textbf{Text encoder.} The text branch uses frozen BERT-base-uncased. All its parameters stay fixed during training, which prevents overfitting given that fine-tuning 110 million parameters on 13\,934 samples would saturate quickly. The branch averages the last four BERT hidden layers to build a word-level representation:
 
 \begin{equation}
-\mathbf{B}^{(m)} = \text{CrossAttn}(\mathbf{B},\, \mathbf{M}^{(m)},\, \mathbf{M}^{(m)})
+\mathbf{T} = \frac{1}{4} \sum_{l=9}^{12} h_l(\mathbf{x}_{\text{text}}) \in \mathbb{R}^{B \times 50 \times 768}
 \end{equation}
 
-This design forces all cross-modal communication to pass through the 16 bottleneck tokens. As a result, the architecture does not allow every token from one stream to interact freely with every token from another stream. Instead, it encourages selective information exchange and reduces unnecessary interaction between irrelevant parts of the sequences.
+A linear projection maps this to $\mathbb{R}^{B \times 50 \times 128}$.
+
+\textbf{Audio encoder.} The audio branch takes COVAREP descriptors of shape $[B, 60, 74]$. A Conv1D layer with kernel size 3 extracts local patterns, followed by batch normalization, ReLU, and sine-cosine positional encoding. The output shape is $[B, 60, 128]$.
+
+\textbf{Visual encoder.} The visual branch takes OpenFace facial action unit descriptors of shape $[B, 60, 35]$. It uses the same Conv1D structure as the audio branch, outputting $[B, 60, 128]$.
+
+\textbf{Bottleneck fusion.} The fusion module holds 16 learnable bottleneck tokens of dimension 128. The model stacks two bottleneck layers. Each layer runs in four steps.
+
+First, self-attention refines each stream independently. Second, the bottleneck tokens query all three streams to compress cross-modal information:
 
 \begin{equation}
-\mathbf{B} = \frac{1}{3}\left(\mathbf{B}^{(\text{text})} + \mathbf{B}^{(\text{audio})} + \mathbf{B}^{(\text{vision})}\right)
+\mathbf{B}^{(m)} = \text{CrossAttn}(\mathbf{B},\, \mathbf{M}^{(m)},\, \mathbf{M}^{(m)}), \quad m \in \{\text{text, audio, vision}\}
 \end{equation}
 
-\textbf{Classification.} After fusion, the classifier uses the CLS token from the text sequence as the text summary. Mean pooling produces the audio and visual summaries. The architecture concatenates these three vectors into a 384-dimensional representation and sends it to a two-layer feed-forward classifier. The final layer produces six emotion logits.
+Third, the three bottleneck outputs combine through a learned weighted average. The weights are a trainable parameter vector passed through softmax, so the model decides how much each modality contributes to the shared representation:
+
+\begin{equation}
+\mathbf{w} = \text{softmax}(\boldsymbol{\alpha}), \qquad
+\mathbf{B}_{\text{new}} = w_t\,\mathbf{B}^{(\text{text})} + w_a\,\mathbf{B}^{(\text{audio})} + w_v\,\mathbf{B}^{(\text{vision})}
+\end{equation}
+
+The bottleneck state then updates through a residual connection with a dedicated LayerNorm:
+
+\begin{equation}
+\mathbf{B} \leftarrow \text{LayerNorm}\!\left(\mathbf{B} + \mathbf{B}_{\text{new}}\right)
+\end{equation}
+
+Fourth, the updated bottleneck enriches the audio and visual streams via cross-attention. The text stream does not receive this feedback, because injecting mixed audio-visual information back into BERT representations only adds noise to an already strong encoder:
+
+\begin{equation}
+\mathbf{A}' = \text{LayerNorm}(\mathbf{A} + \text{CrossAttn}(\mathbf{A},\, \mathbf{B},\, \mathbf{B}))
+\end{equation}
+\begin{equation}
+\mathbf{V}' = \text{LayerNorm}(\mathbf{V} + \text{CrossAttn}(\mathbf{V},\, \mathbf{B},\, \mathbf{B}))
+\end{equation}
+
+A feed-forward network with GELU activation completes each layer. Separate LayerNorm instances guard each residual connection, so the normalization statistics stay independent across positions.
+
+This bottleneck design limits cross-modal communication to 16 shared tokens. Instead of $\mathcal{O}(T^2)$ all-to-all attention, each modality only interacts with the bottleneck, reducing complexity to $\mathcal{O}(T \cdot N_B)$ where $N_B = 16$.
+
+\textbf{Classification.} After fusion, the CLS token from the text sequence and mean-pooled vectors from audio and visual form a 384-dimensional summary:
+
 \begin{equation}
 \mathbf{f} = [\,\mathbf{t}_{\text{CLS}} \;\|\; \bar{\mathbf{a}} \;\|\; \bar{\mathbf{v}}\,] \in \mathbb{R}^{384}
 \end{equation}
 
-During training, the architecture also uses three auxiliary classification heads, one for each stream. These heads calculate additional losses for text, audio, and visual representations. This encourages the network to learn useful information from all three sources and reduces the risk that the final prediction relies only on the strongest stream.
+A two-layer feed-forward classifier maps this to six emotion logits. The architecture also attaches three auxiliary classification heads, one per stream. These compute additional losses during training and push all three encoders to retain task-relevant information, reducing the risk that the model collapses onto a single dominant modality.
 
 % ─────────────────────────────────────────────────────────────
 

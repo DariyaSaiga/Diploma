@@ -1,10 +1,10 @@
 \begin{thebibliography}{}
 
-\bibitem[{Anonymous Authors}, 2026]{anonymous2026context}
-{Anonymous Authors} (2026).
+\bibitem[Khan~Mohammad et~al., 2026]{khan2026context}
+Khan~Mohammad, M. R.~S., Kumar, S., Liu, Y., Song, R., and Behera, A. (2026).
 \newblock Context-aware heterogeneous graph-driven multimodal representation
   learning for emotion recognition.
-\newblock Manuscript under review at ICLR 2026.
+\newblock Submitted to ICLR 2026. OpenReview.
 
 \bibitem[He et~al., 2024]{he2024domain}
 He, P., Yu, J., Ge, C., Yu, Y., Xu, W., Wang, L., Liu, T., and Kan, Z. (2024).

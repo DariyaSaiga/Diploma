@@ -20,7 +20,7 @@
 \contentsline {section}{\numberline {3.1}Research Design}{15}{section.3.1}%
 \contentsline {section}{\numberline {3.2}Quantitative Experimental Approach to Emotion Recognition}{16}{section.3.2}%
 \contentsline {section}{\numberline {3.3}Justification of the Experimental Evaluation Approach}{17}{section.3.3}%
-\contentsline {section}{\numberline {3.4}Dataset and Computational Instruments}{17}{section.3.4}%
+\contentsline {section}{\numberline {3.4}Dataset and Computational Instruments}{18}{section.3.4}%
 \contentsline {section}{\numberline {3.5}Data Sampling and Class Imbalance in CMU-MOSEI}{19}{section.3.5}%
 \contentsline {section}{\numberline {3.6}Multimodal Feature Preprocessing Pipeline}{20}{section.3.6}%
 \contentsline {section}{\numberline {3.7}Evaluation Metrics, Training Protocol, and Ablation Design}{24}{section.3.7}%
@@ -31,42 +31,42 @@
 \contentsline {chapter}{\chapternumberline {4}System Design and Implementation}{32}{chapter.4}%
 \contentsline {section}{\numberline {4.1}System Architecture Overview}{32}{section.4.1}%
 \contentsline {section}{\numberline {4.2}Model Design}{33}{section.4.2}%
-\contentsline {subsection}{\numberline {4.2.1}Baseline 1: Late Fusion with 1D-CNN and BiLSTM}{33}{subsection.4.2.1}%
-\contentsline {subsection}{\numberline {4.2.2}Baseline 2: Late Fusion with Multimodal Transformer}{34}{subsection.4.2.2}%
-\contentsline {subsection}{\numberline {4.2.3}Proposed Model: BERT + Conv1D + Attention Bottleneck Fusion}{34}{subsection.4.2.3}%
-\contentsline {section}{\numberline {4.3}Training Implementation}{36}{section.4.3}%
-\contentsline {section}{\numberline {4.4}Frontend Design}{37}{section.4.4}%
+\contentsline {subsection}{\numberline {4.2.1}Baseline 1: BERT + Conv1D + BiLSTM with Late Fusion}{33}{subsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.2.2}Baseline 2: BERT + Conv1D + Cross-Modal Attention}{34}{subsection.4.2.2}%
+\contentsline {subsection}{\numberline {4.2.3}Proposed Model: BERT + Conv1D + Bottleneck Attention Fusion}{34}{subsection.4.2.3}%
+\contentsline {section}{\numberline {4.3}Training Implementation}{37}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Frontend Design}{38}{section.4.4}%
 \contentsline {section}{\numberline {4.5}Backend Implementation}{38}{section.4.5}%
 \contentsline {section}{\numberline {4.6}Integration of Frontend and Backend}{39}{section.4.6}%
 \contentsline {section}{\numberline {4.7}Database Design}{39}{section.4.7}%
-\contentsline {chapter}{\chapternumberline {5}Results and Evaluation}{40}{chapter.5}%
-\contentsline {section}{\numberline {5.1}Overview}{40}{section.5.1}%
-\contentsline {section}{\numberline {5.2}Comparison of Implemented Architectures}{40}{section.5.2}%
-\contentsline {section}{\numberline {5.3}Ablation Study}{42}{section.5.3}%
-\contentsline {section}{\numberline {5.4}Per-Class F1 Analysis}{43}{section.5.4}%
-\contentsline {section}{\numberline {5.5}Effect of Threshold Tuning}{44}{section.5.5}%
-\contentsline {section}{\numberline {5.6}Comparison with Published Studies}{45}{section.5.6}%
-\contentsline {section}{\numberline {5.7}System Inference Performance}{46}{section.5.7}%
-\contentsline {section}{\numberline {5.8}Training Dynamics}{47}{section.5.8}%
-\contentsline {section}{\numberline {5.9}Summary of Results}{48}{section.5.9}%
-\contentsline {chapter}{\chapternumberline {6}Discussion}{49}{chapter.6}%
-\contentsline {section}{\numberline {6.1}Overview}{49}{section.6.1}%
-\contentsline {section}{\numberline {6.2}Effectiveness of Bottleneck Attention Fusion}{49}{section.6.2}%
-\contentsline {section}{\numberline {6.3}The Role of Text Representation Quality}{50}{section.6.3}%
-\contentsline {section}{\numberline {6.4}Class Imbalance and Minority Emotion Recognition}{51}{section.6.4}%
-\contentsline {section}{\numberline {6.5}Limitations of Handcrafted Features}{52}{section.6.5}%
-\contentsline {section}{\numberline {6.6}On the Semantic Enhancement Module}{53}{section.6.6}%
-\contentsline {section}{\numberline {6.7}Practical Considerations and Deployment}{53}{section.6.7}%
-\contentsline {section}{\numberline {6.8}Comparison with the Research Questions}{54}{section.6.8}%
-\contentsline {section}{\numberline {6.9}Summary}{55}{section.6.9}%
-\contentsline {chapter}{\chapternumberline {7}Conclusion}{56}{chapter.7}%
-\contentsline {chapter}{Bibliography}{60}{chapter*.32}%
-\contentsline {chapter}{Appendix A}{63}{appendix*.33}%
-\contentsline {chapter}{Appendix B }{64}{appendix*.35}%
-\contentsline {chapter}{Appendix C}{69}{appendix*.44}%
-\contentsline {section}{Bottleneck Attention Layer}{70}{section*.46}%
-\contentsline {section}{Dataset Preprocessing}{71}{section*.48}%
-\contentsline {section}{Feature Extractor}{72}{section*.50}%
-\contentsline {section}{Training Loop}{73}{section*.52}%
-\contentsline {section}{Train and Evaluate Functions}{74}{section*.54}%
-\contentsline {section}{Video Feature Extraction}{75}{section*.56}%
+\contentsline {chapter}{\chapternumberline {5}Results and Evaluation}{41}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Overview}{41}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Comparison of Implemented Architectures}{41}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Ablation Study}{43}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Per-Class F1 Analysis}{44}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Effect of Threshold Tuning}{45}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Comparison with Published Studies}{46}{section.5.6}%
+\contentsline {section}{\numberline {5.7}System Inference Performance}{47}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Training Dynamics}{48}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Summary of Results}{49}{section.5.9}%
+\contentsline {chapter}{\chapternumberline {6}Discussion}{51}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Overview}{51}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Effectiveness of Bottleneck Attention Fusion}{51}{section.6.2}%
+\contentsline {section}{\numberline {6.3}The Role of Text Representation Quality}{52}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Class Imbalance and Minority Emotion Recognition}{53}{section.6.4}%
+\contentsline {section}{\numberline {6.5}Limitations of Handcrafted Features}{54}{section.6.5}%
+\contentsline {section}{\numberline {6.6}On the Semantic Enhancement Module}{55}{section.6.6}%
+\contentsline {section}{\numberline {6.7}Practical Considerations and Deployment}{55}{section.6.7}%
+\contentsline {section}{\numberline {6.8}Comparison with the Research Questions}{56}{section.6.8}%
+\contentsline {section}{\numberline {6.9}Summary}{57}{section.6.9}%
+\contentsline {chapter}{\chapternumberline {7}Conclusion}{58}{chapter.7}%
+\contentsline {chapter}{Bibliography}{61}{chapter*.32}%
+\contentsline {chapter}{Appendix A}{64}{appendix*.33}%
+\contentsline {chapter}{Appendix B }{65}{appendix*.35}%
+\contentsline {chapter}{Appendix C}{70}{appendix*.44}%
+\contentsline {section}{Bottleneck Attention Layer}{71}{section*.46}%
+\contentsline {section}{Dataset Preprocessing}{72}{section*.48}%
+\contentsline {section}{Feature Extractor}{73}{section*.50}%
+\contentsline {section}{Training Loop}{74}{section*.52}%
+\contentsline {section}{Train and Evaluate Functions}{75}{section*.54}%
+\contentsline {section}{Video Feature Extraction}{76}{section*.56}%

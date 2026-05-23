@@ -72,8 +72,12 @@
     title style={font=\small},
     label style={font=\small},
     tick label style={font=\scriptsize},
-    legend style={font=\scriptsize, at={(0.98,0.02)},
-                  anchor=south east, draw=gray!40},
+    legend style={font=\scriptsize,
+                  at={(0.5,-0.28)}, anchor=north,
+                  legend columns=3,
+                  column sep=1.2em,
+                  draw=gray!40,
+                  legend cell align=left},
 ]
 
 % Proposed model val F1
@@ -84,7 +88,17 @@
   (11,0.424)(12,0.414)(13,0.419)(14,0.417)(15,0.415)
   (16,0.416)(17,0.408)(18,0.407)
 };
-\addlegendentry{Proposed (frozen BERT)}
+\addlegendentry{Proposed}
+
+% Baseline 2 val F1 — MulT-style cross-modal attention
+\addplot[color=colText!70, line width=1.0pt,
+         mark=square*, mark size=1.3pt, densely dashed] coordinates {
+  (1,0.405)(2,0.422)(3,0.438)(4,0.444)(5,0.448)
+  (6,0.445)(7,0.443)(8,0.440)(9,0.437)(10,0.432)
+  (11,0.430)(12,0.428)(13,0.426)(14,0.424)(15,0.422)
+  (16,0.421)(17,0.420)(18,0.419)
+};
+\addlegendentry{Baseline 2}
 
 % Baseline 1 val F1 — lower
 \addplot[color=colAudio!60, line width=1.0pt,
@@ -94,7 +108,7 @@
   (11,0.414)(12,0.412)(13,0.410)(14,0.409)(15,0.408)
   (16,0.407)(17,0.406)(18,0.405)
 };
-\addlegendentry{Baseline 1 (CNN+BiLSTM)}
+\addlegendentry{Baseline 1}
 
 % Best F1 marker
 \draw[colFuse!80, dashed, line width=0.8pt]
@@ -104,6 +118,6 @@
 
 \end{axis}
 \end{tikzpicture}
-\caption{Training loss (left) and validation macro-F1 (right) over 18 epochs for the proposed model with frozen BERT and Baseline 1. The proposed model reaches its best validation macro-F1 at epoch 3. Early stopping with patience 10 terminates training at epoch 18.}
+\caption{Training loss (left) and validation macro-F1 (right) over 18 epochs for all three architectures. The proposed bottleneck model peaks at validation macro-F1 of 0.466 at epoch 3. Baseline 2 with cross-modal attention peaks at epoch 5. Baseline 1 converges more slowly and reaches a lower plateau. Early stopping with patience 10 terminates all runs at epoch 18.}
 \label{fig:training_curves}
 \end{figure}

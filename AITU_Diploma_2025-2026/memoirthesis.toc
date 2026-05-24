@@ -64,9 +64,3 @@
 \contentsline {chapter}{Appendix A}{64}{appendix*.33}%
 \contentsline {chapter}{Appendix B }{65}{appendix*.35}%
 \contentsline {chapter}{Appendix C}{70}{appendix*.44}%
-\contentsline {section}{Bottleneck Attention Layer}{71}{section*.46}%
-\contentsline {section}{Dataset Preprocessing}{72}{section*.48}%
-\contentsline {section}{Feature Extractor}{73}{section*.50}%
-\contentsline {section}{Training Loop}{74}{section*.52}%
-\contentsline {section}{Train and Evaluate Functions}{75}{section*.54}%
-\contentsline {section}{Video Feature Extraction}{76}{section*.56}%

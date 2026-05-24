@@ -5,6 +5,7 @@ pydantic==2.7.1
 
 # ML core
 torch==2.3.0
+torchvision==0.18.0
 transformers==4.41.0
 numpy==1.26.4
 scikit-learn==1.4.2

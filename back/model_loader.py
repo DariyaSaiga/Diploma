@@ -248,7 +248,11 @@ def run_inference(
     {"emotion": str, "confidence": float (0-100), "probabilities": {str: float}}
     """
     if _model is None:
-        raise RuntimeError("Model not loaded. Call load_model() first.")
+        logger.info("Model not yet loaded — triggering lazy load now...")
+        load_model()
+
+    if _model is None:
+        raise RuntimeError("Model could not be loaded.")
 
     batch = 1
 

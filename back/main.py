@@ -197,15 +197,11 @@ async def lifespan(app: FastAPI):
 
     loop = asyncio.get_event_loop()
 
-    # Загружаем модель и токенизатор параллельно
-    await loop.run_in_executor(None, model_loader.load_model)
+    # Load only the tokenizer at startup (lightweight, ~500 KB).
+    # The heavy PyTorch model (447 MB) is loaded lazily on the first request
+    # to avoid OOM on free Render (512 MB RAM limit).
     await loop.run_in_executor(None, _get_tokenizer)
-
-    info = model_loader.get_load_info()
-    if model_loader.is_mock():
-        logger.warning("⚠  Running in MOCK mode — %s", info.get("reason", "unknown"))
-    else:
-        logger.info("✔  Model loaded — %s", info)
+    logger.info("✔  Tokenizer ready. Model will load lazily on first inference request.")
 
     yield
 

@@ -54,11 +54,11 @@ _frontend_url = os.getenv("FRONTEND_URL", "")
 
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    # Vercel preview URLs (все поддомены .vercel.app)
-    "https://*.vercel.app",
+    "https://diploma-kappa-nine.vercel.app",
+    "https://diploma-git-main-dariyasaigas-projects.vercel.app",
+    "https://diploma-3hx7mfl3r-dariyasaigas-projects.vercel.app",
 ]
 
 # Добавляем продакшн URL если задан

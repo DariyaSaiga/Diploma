@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --black: #111111;
+  --white: #ffffff;
+  --gray-100: #f5f5f5;
+  --gray-200: #e8e8e8;
+  --gray-300: #cccccc;
+  --gray-400: #999999;
+  --gray-500: #666666;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body), sans-serif;
+  background: var(--white);
+  color: var(--black);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Font utility classes */
+.font-body {
+  font-family: var(--font-body), sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-goldman), sans-serif;
+}
+
+.font-goldman {
+  font-family: var(--font-goldman), sans-serif;
+}
+
+.font-holtwood {
+  font-family: var(--font-holtwood), serif;
+}
+
+/* FAQ accordion — animated via JS-toggled .open class */
+.faq-answer {
+  font-size: 16px;
+  color: #666;
+  line-height: 1.7;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding-bottom 0.3s ease;
+}
+
+.faq-answer.open {
+  max-height: 300px;
+  padding-bottom: 18px;
+}
+
+/* Emotion probability bar fill — animated width */
+.bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Button press animation */
+.btn-press {
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.btn-press:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Card hover lift */
+.card-lift {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-lift:hover {
+  transform: scale(1.025);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.10);
+}
+.card-lift-dark {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-lift-dark:hover {
+  transform: scale(1.025);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}

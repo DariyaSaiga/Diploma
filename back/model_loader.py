@@ -18,7 +18,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-
+import os
+from huggingface_hub import hf_hub_download
 import numpy as np
 import torch
 import torch.nn as nn
@@ -56,6 +57,34 @@ _model: Optional[nn.Module] = None
 _mock_mode: bool = False
 _load_info: Dict = {}
 
+MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "DariyaSaiga/multimood-best-model")
+MODEL_FILENAME = os.getenv("MODEL_FILENAME", "best_model.pt")
+
+
+def get_model_path() -> Path:
+    """
+    Return local model path if available.
+    Otherwise download best_model.pt from Hugging Face Hub.
+    """
+    local_path = Path(MODEL_FILENAME)
+
+    if local_path.exists():
+        logger.info("Using local model weights: %s", local_path)
+        return local_path
+
+    logger.info(
+        "Local model weights not found. Downloading '%s' from Hugging Face repo '%s'...",
+        MODEL_FILENAME,
+        MODEL_REPO_ID,
+    )
+
+    downloaded_path = hf_hub_download(
+        repo_id=MODEL_REPO_ID,
+        filename=MODEL_FILENAME,
+    )
+
+    logger.info("Model downloaded to: %s", downloaded_path)
+    return Path(downloaded_path)
 
 # ── Mock fallback ──────────────────────────────────────────────────────────────
 class _MockModel(nn.Module):
@@ -99,10 +128,12 @@ def load_model() -> None:
         _set_mock(f"models.py import failed: {_model_import_error}")
         return
 
-    # Step 2: weights file exists?
-    pt_path = Path(MODEL_PATH)
-    if not pt_path.exists():
-        _set_mock(f"weights file not found: {MODEL_PATH}")
+    # Step 2: resolve weights path
+    try:
+        pt_path = get_model_path()
+    except Exception as exc:
+        _set_mock(f"weights download failed: {exc}")
+        logger.error("Failed to resolve/download model weights", exc_info=True)
         return
 
     # Step 3: instantiate — NO constructor arguments

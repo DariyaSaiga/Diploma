@@ -321,6 +321,12 @@ async def health() -> HealthResponse:
     )
 
 
+# ── GET / (Render health check) ───────────────────────────────────────────────
+@app.get("/", tags=["System"])
+async def root():
+    return {"status": "ok", "service": "Emotion Recognition API"}
+
+
 # ── POST /api/analyze/frame ───────────────────────────────────────────────────
 @app.post(
     "/api/analyze/frame",

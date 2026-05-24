@@ -49,7 +49,7 @@ export default function FAQ() {
       <div className="md:pl-[60px]">
         <div className="relative aspect-[4/3] bg-[#e8e8e8] rounded mb-5 flex items-center justify-center text-[#999] text-sm overflow-hidden">
           <Image
-            src="/bazaart.png"
+            src="/Bazaart.png"
             alt="Us"
             width={400}
             height={300}

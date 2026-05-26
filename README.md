@@ -1,19 +1,23 @@
-# Diploma
-Emotion recognition
-graph TD
+```mermaid
+  graph TD
 
-U[User] --> F[Frontend (React / Next.js)]
-F --> B[Backend API (FastAPI)]
+  U[User] --> F[Frontend (React / Next.js)]
+  F --> B[Backend API (FastAPI)]
 
-B --> A[Audio Feature Extraction]
-B --> T[Text Processing (Whisper + BERT)]
-B --> V[Visual Processing (OpenFace / PyFeat)]
+  B --> P[Feature Extraction Pipeline]
 
-A --> M[BottleneckFusionModel]
-T --> M
-V --> M
+  P --> A[Audio (FFmpeg + OpenSMILE)]
+  P --> T[Text (Whisper + BERT)]
+  P --> V[Visual (OpenFace / PyFeat)]
 
-M --> B
-B --> F
+  A --> M[BottleneckFusionModel]
+  T --> M
+  V --> M
 
-F --> R[Display Emotion Result]
+  M --> O[Emotion Prediction]
+
+  O --> B
+  B --> F
+
+  F --> R[Result Display]
+```

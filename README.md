@@ -1,4 +1,12 @@
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {
+  'background': '#ffffff',
+  'primaryColor': '#ffffff',
+  'primaryBorderColor': '#000000',
+  'lineColor': '#000000',
+  'textColor': '#000000'
+}}}%%
+
 graph TD
 
 U[User] --> F[Frontend React / Next.js]

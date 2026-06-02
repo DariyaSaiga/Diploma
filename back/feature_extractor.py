@@ -1,19 +1,3 @@
-"""
-feature_extractor.py
-══════════════════════════════════════════════════════════════════════════════
-Pipeline: видеофайл → COVAREP (74-dim) + OpenFace AU (35-dim) + BERT текст
-→ BottleneckFusionModel → предсказание эмоции.
-
-Установка зависимостей:
-    pip install opensmile feat faster-whisper opencv-python
-
-Использование:
-    from feature_extractor import VideoEmotionPipeline
-    pipe = VideoEmotionPipeline()
-    result = pipe.predict("video.mp4")
-    print(result)
-══════════════════════════════════════════════════════════════════════════════
-"""
 
 from __future__ import annotations
 

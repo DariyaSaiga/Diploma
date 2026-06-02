@@ -1,19 +1,22 @@
 """
-Baseline 2: MulT-style Cross-Modal Attention Fusion
+Baseline 2: Cross-Modal Attention Fusion — упрощённая версия
 
-Архитектура (по Tsai et al., 2019 — Multimodal Transformer):
-  - Text:   BERT frozen, avg 4 слоёв → Linear(768→128) + pos enc
+Архитектура:
+  - Text:   BERT, заморожен кроме последнего слоя (encoder.layer[-1])
+            last_hidden_state → Linear(768→128) + pos enc
   - Audio:  COVAREP [B,60,74] → Conv1D(74→128) + pos enc
   - Vision: OpenFace [B,60,35] → Conv1D(35→128) + pos enc
-  - Fusion: каждая модальность крест-внимательно посещает две другие
-            T' = T + CrossAttn(Q=T, KV=A) + CrossAttn(Q=T, KV=V)
-            A' = A + CrossAttn(Q=A, KV=T) + CrossAttn(Q=A, KV=V)
-            V' = V + CrossAttn(Q=V, KV=T) + CrossAttn(Q=V, KV=A)
-  - Pool: CLS (text), mean (audio, vision) → cat → FF classifier
+  - Fusion: один слой cross-modal attention (без FFN — только attn + norm)
+            T' = norm(T + CrossAttn(Q=T, KV=A) + CrossAttn(Q=T, KV=V))
+            A' = norm(A + CrossAttn(Q=A, KV=T) + CrossAttn(Q=A, KV=V))
+            V' = norm(V + CrossAttn(Q=V, KV=T) + CrossAttn(Q=V, KV=A))
+  - Pool: CLS (text), mean (audio, vision) → cat → Linear(384→6)
 
-Ключевое отличие от Proposed: полный pairwise cross-attention (O(T²))
-вместо bottleneck токенов. Ключевое отличие от Baseline 1: есть
-cross-modal interaction до классификации.
+Ключевые отличия от Proposed:
+  1. Один слой cross-attention вместо N_LAYERS; нет FFN после attention
+  2. BERT: fine-tune только последнего слоя (Proposed — bottleneck)
+  3. Classifier: одна линейная проекция без скрытого слоя
+Ключевое отличие от Baseline 1: есть cross-modal interaction до классификации.
 """
 
 import torch
@@ -23,14 +26,13 @@ from transformers import BertModel
 
 HIDDEN_DIM   = 128
 N_HEADS      = 8
-N_LAYERS     = 2       # два слоя cross-modal attention (аналог N_LAYERS в Proposed)
 DROPOUT      = 0.1
 N_EMOTIONS   = 6
 BERT_MODEL   = "bert-base-uncased"
 
 
 class ModalityProjection(nn.Module):
-    """Conv1D проекция → HIDDEN_DIM (идентично Proposed)."""
+    """Conv1D проекция → HIDDEN_DIM."""
     def __init__(self, input_dim):
         super().__init__()
         self.proj = nn.Sequential(
@@ -40,14 +42,11 @@ class ModalityProjection(nn.Module):
         )
 
     def forward(self, x):
-        x = x.transpose(1, 2)
-        x = self.proj(x)
-        x = x.transpose(1, 2)
-        return x
+        return self.proj(x.transpose(1, 2)).transpose(1, 2)
 
 
 class PositionalEncoding(nn.Module):
-    """Sine-cosine позиционное кодирование (идентично Proposed)."""
+    """Sine-cosine позиционное кодирование."""
     def __init__(self, max_len=128):
         super().__init__()
         pe  = torch.zeros(max_len, HIDDEN_DIM)
@@ -65,10 +64,10 @@ class PositionalEncoding(nn.Module):
 
 class CrossModalLayer(nn.Module):
     """
-    Один слой MulT-style cross-modal attention.
+    Один слой cross-modal attention без FFN.
 
     Каждая модальность посещает обе другие через cross-attention,
-    затем FFN с residual connection — аналог одного слоя трансформера.
+    результат суммируется с residual и нормируется (без FFN — упрощение).
     """
 
     def __init__(self):
@@ -86,27 +85,10 @@ class CrossModalLayer(nn.Module):
         self.ca_v_from_t = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
         self.ca_v_from_a = nn.MultiheadAttention(HIDDEN_DIM, N_HEADS, DROPOUT, batch_first=True)
 
-        # FFN для каждой модальности
-        self.ffn_t = self._ffn()
-        self.ffn_a = self._ffn()
-        self.ffn_v = self._ffn()
-
-        # LayerNorm
-        self.norm_t1 = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_a1 = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_v1 = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_t2 = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_a2 = nn.LayerNorm(HIDDEN_DIM)
-        self.norm_v2 = nn.LayerNorm(HIDDEN_DIM)
-
-    def _ffn(self):
-        return nn.Sequential(
-            nn.Linear(HIDDEN_DIM, HIDDEN_DIM * 4),
-            nn.GELU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(HIDDEN_DIM * 4, HIDDEN_DIM),
-            nn.Dropout(DROPOUT),
-        )
+        # Только один LayerNorm на модальность (без FFN → вдвое меньше нормов)
+        self.norm_t = nn.LayerNorm(HIDDEN_DIM)
+        self.norm_a = nn.LayerNorm(HIDDEN_DIM)
+        self.norm_v = nn.LayerNorm(HIDDEN_DIM)
 
     def forward(self, text, audio, vision, text_mask=None):
         t_pad = (text_mask == 0) if text_mask is not None else None
@@ -114,58 +96,54 @@ class CrossModalLayer(nn.Module):
         # ── Text посещает Audio и Vision ──────────────────────────────────────
         t_a, _ = self.ca_t_from_a(text, audio,  audio)
         t_v, _ = self.ca_t_from_v(text, vision, vision)
-        text   = self.norm_t1(text + t_a + t_v)
-        text   = self.norm_t2(text + self.ffn_t(text))
+        text   = self.norm_t(text + t_a + t_v)
 
         # ── Audio посещает Text и Vision ──────────────────────────────────────
         a_t, _ = self.ca_a_from_t(audio, text,   text,   key_padding_mask=t_pad)
         a_v, _ = self.ca_a_from_v(audio, vision, vision)
-        audio  = self.norm_a1(audio + a_t + a_v)
-        audio  = self.norm_a2(audio + self.ffn_a(audio))
+        audio  = self.norm_a(audio + a_t + a_v)
 
         # ── Vision посещает Text и Audio ──────────────────────────────────────
         v_t, _ = self.ca_v_from_t(vision, text,  text,  key_padding_mask=t_pad)
         v_a, _ = self.ca_v_from_a(vision, audio, audio)
-        vision = self.norm_v1(vision + v_t + v_a)
-        vision = self.norm_v2(vision + self.ffn_v(vision))
+        vision = self.norm_v(vision + v_t + v_a)
 
         return text, audio, vision
 
 
 class CrossModalFusionModel(nn.Module):
     """
-    Baseline 2: MulT-style полный pairwise cross-modal attention.
-    Интерфейс совместим с BottleneckFusionModel.
+    Baseline 2: один слой cross-modal attention, простой классификатор.
+    Интерфейс совместим с train_baseline2.py (4 выхода).
     """
 
     def __init__(self):
         super().__init__()
 
-        # ── Text: BERT frozen + linear (то же что Proposed) ──────────────────
+        # ── BERT: freeze all → unfreeze last transformer layer ────────────────
         self.bert = BertModel.from_pretrained(BERT_MODEL)
         for param in self.bert.parameters():
             param.requires_grad = False
+        # Разморозить только последний блок (слой 11 у bert-base)
+        for param in self.bert.encoder.layer[-1].parameters():
+            param.requires_grad = True
 
         self.text_proj = nn.Linear(768, HIDDEN_DIM)
 
-        # ── Audio и Vision: Conv1D + positional encoding (то же что Proposed) ─
+        # ── Audio и Vision: Conv1D + positional encoding ───────────────────────
         self.audio_proj  = ModalityProjection(input_dim=74)
         self.vision_proj = ModalityProjection(input_dim=35)
+        self.pos_enc_text   = PositionalEncoding(max_len=50)
         self.pos_enc_audio  = PositionalEncoding(max_len=60)
         self.pos_enc_vision = PositionalEncoding(max_len=60)
 
-        # ── N_LAYERS слоёв cross-modal attention ──────────────────────────────
-        self.layers = nn.ModuleList([CrossModalLayer() for _ in range(N_LAYERS)])
+        # ── Один слой cross-modal attention (без FFN) ──────────────────────────
+        self.cross_modal = CrossModalLayer()
 
         self.dropout = nn.Dropout(DROPOUT)
 
-        # ── Classifier (то же что Proposed) ──────────────────────────────────
-        self.classifier = nn.Sequential(
-            nn.Linear(HIDDEN_DIM * 3, HIDDEN_DIM),
-            nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(HIDDEN_DIM, N_EMOTIONS),
-        )
+        # ── Classifier: одна линейная проекция (без скрытого слоя) ───────────
+        self.classifier = nn.Linear(HIDDEN_DIM * 3, N_EMOTIONS)
 
         # ── Auxiliary heads ───────────────────────────────────────────────────
         self.head_text   = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
@@ -175,22 +153,17 @@ class CrossModalFusionModel(nn.Module):
     def forward(self, input_ids, attention_mask, audio, vision,
                 audio_mask, vision_mask):
 
-        # ── Text: BERT avg 4 слоёв → linear ──────────────────────────────────
-        bert_out = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_hidden_states=True,
-        )
-        text = torch.stack(bert_out.hidden_states[-4:], dim=0).mean(dim=0)  # [B,50,768]
-        text = self.dropout(self.text_proj(text))                            # [B,50,128]
+        # ── Text: CLS токен последнего слоя BERT → linear + pos enc ──────────
+        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        text = self.dropout(self.text_proj(bert_out.last_hidden_state))  # [B,50,128]
+        text = self.pos_enc_text(text)
 
         # ── Audio и Vision: Conv1D + positional encoding ──────────────────────
         audio  = self.pos_enc_audio(self.audio_proj(audio))    # [B,60,128]
         vision = self.pos_enc_vision(self.vision_proj(vision))  # [B,60,128]
 
-        # ── N_LAYERS слоёв cross-modal attention ──────────────────────────────
-        for layer in self.layers:
-            text, audio, vision = layer(text, audio, vision, text_mask=attention_mask)
+        # ── Один слой cross-modal attention ───────────────────────────────────
+        text, audio, vision = self.cross_modal(text, audio, vision, text_mask=attention_mask)
 
         # ── Aggregation: CLS (text) + mean pool (audio, vision) ──────────────
         text_cls    = text[:, 0, :]        # [B,128]

@@ -1,29 +1,32 @@
 """
-Baseline 1: Late Fusion — BERT (frozen) + 1D-CNN (audio) + BiLSTM (vision)
+Baseline 1: Late Fusion — BERT (last layer fine-tuned) + 1D-CNN (audio) + BiLSTM (vision)
 
 Архитектура:
-  - Text:   BERT frozen, avg последних 4 слоёв → Linear(768→128) → CLS токен
-  - Audio:  COVAREP [B,60,74] → Conv1D → BN → ReLU → mean pool
-  - Vision: OpenFace [B,60,35] → BiLSTM(hidden=64, bidir=True) → mean pool
-  - Fusion: cat([text, audio, vision]) → FF classifier (без cross-modal attention)
+  - Text:   BERT, заморожен кроме последнего слоя (encoder.layer[-1])
+            CLS токен последнего слоя → Linear(768→128)
+  - Audio:  COVAREP [B,60,74] → Conv1D → BN → ReLU → mean pool → [B,128]
+  - Vision: OpenFace [B,60,35] → BiLSTM(hidden=64, bidir) → mean pool → [B,128]
+  - Fusion: cat([text, audio, vision]) → Linear(384→6) — одна линейная проекция
 
-Такой же BERT и training protocol что у Proposed → разница только в fusion.
+Ключевые отличия от Proposed:
+  1. BERT: fine-tune только последнего слоя (Proposed — fine-tune N слоёв bottleneck)
+  2. Vision: BiLSTM вместо Conv1D (разная модальная архитектура)
+  3. Fusion: простая конкатенация без cross-modal attention
 """
 
 import torch
 import torch.nn as nn
-import math
 from transformers import BertModel
 
-HIDDEN_DIM   = 128
-DROPOUT      = 0.1
-N_EMOTIONS   = 6
-BERT_MODEL   = "bert-base-uncased"
+HIDDEN_DIM = 128
+DROPOUT    = 0.1
+N_EMOTIONS = 6
+BERT_MODEL = "bert-base-uncased"
 
 
 class ModalityProjection(nn.Module):
-    """Conv1D проекция одной модальности в HIDDEN_DIM (то же что в Proposed)."""
-    def __init__(self, input_dim):
+    """Conv1D проекция аудио-признаков → HIDDEN_DIM."""
+    def __init__(self, input_dim: int):
         super().__init__()
         self.proj = nn.Sequential(
             nn.Conv1d(input_dim, HIDDEN_DIM, kernel_size=3, padding=1),
@@ -31,34 +34,40 @@ class ModalityProjection(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x):
-        x = x.transpose(1, 2)   # [B, D, T]
-        x = self.proj(x)         # [B, HIDDEN_DIM, T]
-        x = x.transpose(1, 2)   # [B, T, HIDDEN_DIM]
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [B, T, D] → [B, T, HIDDEN_DIM]
+        return self.proj(x.transpose(1, 2)).transpose(1, 2)
 
 
 class LateFusionModel(nn.Module):
     """
-    Baseline 1: независимые энкодеры + конкатенация без cross-modal attention.
-    Интерфейс совместим с BottleneckFusionModel — возвращает 4 логита.
+    Baseline 1: независимые энкодеры + простая конкатенация.
+
+    BERT: заморожен, кроме последнего трансформер-блока (encoder.layer[-1]).
+    Text-фича = CLS токен последнего слоя BERT → Linear(768→128).
+
+    Fusion = cat(text_cls, audio_pool, vision_pool) → Linear(384→6).
+    Нет cross-modal attention — ключевое отличие от Baseline 2 и Proposed.
     """
 
     def __init__(self):
         super().__init__()
 
-        # ── Text: BERT frozen + linear projection (то же что Proposed) ────────
+        # ── BERT: freeze all → unfreeze last transformer layer ────────────────
         self.bert = BertModel.from_pretrained(BERT_MODEL)
         for param in self.bert.parameters():
             param.requires_grad = False
+        # Разморозить только последний блок (слой 11 у bert-base)
+        for param in self.bert.encoder.layer[-1].parameters():
+            param.requires_grad = True
 
         self.text_proj = nn.Linear(768, HIDDEN_DIM)
 
-        # ── Audio: 1D-CNN (Conv1D + BN + ReLU) → same as Proposed ────────────
+        # ── Audio: 1D-CNN → mean pool ─────────────────────────────────────────
         self.audio_encoder = ModalityProjection(input_dim=74)
 
-        # ── Vision: BiLSTM — ключевое отличие от Proposed ────────────────────
-        # hidden_size=64, bidirectional=True → output dim = 64*2 = 128 = HIDDEN_DIM
+        # ── Vision: BiLSTM → mean pool (отличие от Proposed) ─────────────────
+        # hidden=64, bidir=True → output=128=HIDDEN_DIM
         self.vision_lstm = nn.LSTM(
             input_size=35,
             hidden_size=HIDDEN_DIM // 2,
@@ -70,52 +79,47 @@ class LateFusionModel(nn.Module):
 
         self.dropout = nn.Dropout(DROPOUT)
 
-        # ── Classifier: cat(text+audio+vision) → 6 логитов ───────────────────
-        self.classifier = nn.Sequential(
-            nn.Linear(HIDDEN_DIM * 3, HIDDEN_DIM),
-            nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(HIDDEN_DIM, N_EMOTIONS),
-        )
+        # ── Fusion: concat → одна линейная проекция (без ReLU/скрытого слоя) ─
+        self.classifier = nn.Linear(HIDDEN_DIM * 3, N_EMOTIONS)
 
-        # ── Auxiliary heads (по одной на модальность) ─────────────────────────
-        # Те же что в Proposed — для fair comparison и лучшей сходимости
+        # ── Auxiliary heads (для auxiliary losses в train_baseline1.py) ───────
         self.head_text   = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
         self.head_audio  = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
         self.head_vision = nn.Linear(HIDDEN_DIM, N_EMOTIONS)
 
-    def forward(self, input_ids, attention_mask, audio, vision,
-                audio_mask, vision_mask):
-        B = input_ids.size(0)
+    def forward(
+        self,
+        input_ids:      torch.Tensor,   # [B, 50]
+        attention_mask: torch.Tensor,   # [B, 50]
+        audio:          torch.Tensor,   # [B, 60, 74]
+        vision:         torch.Tensor,   # [B, 60, 35]
+        audio_mask:     torch.Tensor,   # [B, 60]  (не используется, но нужен для совместимости)
+        vision_mask:    torch.Tensor,   # [B, 60]  (не используется, но нужен для совместимости)
+    ):
+        # ── Text: CLS токен последнего слоя BERT ─────────────────────────────
+        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        # last_hidden_state: [B, 50, 768]
+        text_cls = bert_out.last_hidden_state[:, 0, :]       # [B, 768]
+        text_cls = self.dropout(self.text_proj(text_cls))    # [B, 128]
 
-        # ── Text: BERT avg 4 слоёв → linear → CLS токен ──────────────────────
-        bert_out = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_hidden_states=True,
+        # ── Audio: Conv1D → mean pool ─────────────────────────────────────────
+        audio_pool = self.audio_encoder(audio).mean(dim=1)   # [B, 128]
+
+        # ── Vision: BiLSTM → mean pool ────────────────────────────────────────
+        vision_out, _ = self.vision_lstm(vision)              # [B, 60, 128]
+        vision_pool   = vision_out.mean(dim=1)                # [B, 128]
+
+        # ── Late fusion: concat → единственный линейный слой ─────────────────
+        fused = self.dropout(
+            torch.cat([text_cls, audio_pool, vision_pool], dim=-1)  # [B, 384]
         )
-        text = torch.stack(bert_out.hidden_states[-4:], dim=0).mean(dim=0)  # [B,50,768]
-        text = self.dropout(self.text_proj(text))                            # [B,50,128]
-        text_cls = text[:, 0, :]                                             # [B,128]
 
-        # ── Audio: 1D-CNN → mean pool ─────────────────────────────────────────
-        audio_enc  = self.audio_encoder(audio)   # [B,60,128]
-        audio_pool = audio_enc.mean(dim=1)       # [B,128]
-
-        # ── Vision: BiLSTM → mean pool всех скрытых состояний ─────────────────
-        vision_out, _ = self.vision_lstm(vision)  # [B,60,128]
-        vision_pool   = vision_out.mean(dim=1)    # [B,128]
-
-        # ── Late fusion: простая конкатенация → классификатор ────────────────
-        fused = torch.cat([text_cls, audio_pool, vision_pool], dim=-1)  # [B,384]
-        fused = self.dropout(fused)
-
-        logits_fuse   = self.classifier(fused)
-        logits_text   = self.head_text(text_cls)
-        logits_audio  = self.head_audio(audio_pool)
-        logits_vision = self.head_vision(vision_pool)
-
-        return logits_fuse, logits_text, logits_audio, logits_vision
+        return (
+            self.classifier(fused),          # logits_fuse   [B, 6]
+            self.head_text(text_cls),         # logits_text   [B, 6]
+            self.head_audio(audio_pool),      # logits_audio  [B, 6]
+            self.head_vision(vision_pool),    # logits_vision [B, 6]
+        )
 
 
 if __name__ == "__main__":
@@ -131,10 +135,13 @@ if __name__ == "__main__":
 
     total   = sum(p.numel() for p in model.parameters())
     bert_p  = sum(p.numel() for p in model.bert.parameters())
+    frozen  = sum(p.numel() for p in model.parameters() if not p.requires_grad)
     train_p = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Параметры всего      : {total:,}")
-    print(f"  BERT (frozen)      : {bert_p:,}")
-    print(f"  Обучаемые          : {train_p:,}")
+
+    print(f"Параметры всего           : {total:,}")
+    print(f"  BERT всего              : {bert_p:,}")
+    print(f"  BERT frozen             : {frozen - (total - bert_p - train_p):,}")
+    print(f"  Обучаемые (всего)       : {train_p:,}")
 
     batch = next(iter(loaders["train"]))
     with torch.no_grad():

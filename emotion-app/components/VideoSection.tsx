@@ -3,7 +3,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useEmotion } from '@/lib/EmotionContex';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+// Запросы идут через Next.js proxy (/api/* → http://localhost:8000/api/*)
+// без CORS. Не используем прямой URL бекенда из браузера.
 
 const EMOTION_COLORS: Record<string, string> = {
   happy:     '#FFF18A',
@@ -50,7 +51,7 @@ export default function VideoSection() {
       const form = new FormData();
       form.append('file', file);
       if (textOverride.trim()) form.append('text', textOverride.trim());
-      const res = await fetch(`${API_BASE}/api/analyze/video`, { method: 'POST', body: form, signal: controller.signal });
+      const res = await fetch(`/api/analyze/video`, { method: 'POST', body: form, signal: controller.signal });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail ?? `HTTP ${res.status}`); }
       const data = await res.json();
       setResult(data);
